@@ -1,0 +1,85 @@
+{
+  "expo": {
+    "name": "MailPilotus",
+    "slug": "mailpilotus",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "mailpilotus",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B2545"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ai.mailpilotus.app",
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "NSContactsUsageDescription": "MailPilotus uses your contacts so you can assign a forwarded email to someone as a follow-up task.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "ai.mailpilotus.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B2545"
+      },
+      "permissions": [
+        "READ_CONTACTS",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "name": "MailPilotus",
+      "shortName": "MailPilotus",
+      "themeColor": "#0B2545",
+      "backgroundColor": "#F5F9FF"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "MailPilotus uses your contacts so you can assign a forwarded email to someone as a follow-up task."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/adaptive-icon.png",
+          "color": "#0B2545"
+        }
+      ],
+      "expo-asset",
+      "expo-status-bar",
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "apiBaseUrl": "https://mailpilotus-ai-backend.onrender.com",
+      "revenueCatApiKeyIos": "appl_BDNIOTiuCMwOFvudKaVLBtEvzFH",
+      "revenueCatApiKeyAndroid": "REPLACE_WITH_REVENUECAT_ANDROID_KEY",
+      "eas": {
+        "projectId": "2060934b-b3ac-4ec5-b744-d2c6e1526db4"
+      }
+    },
+    "owner": "mailpilotus",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/2060934b-b3ac-4ec5-b744-d2c6e1526db4"
+    }
+  }
+}

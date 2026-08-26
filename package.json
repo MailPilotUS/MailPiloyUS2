@@ -1,0 +1,51 @@
+{
+  "name": "mailpilotus",
+  "version": "1.0.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "build:ios": "eas build --platform ios",
+    "build:android": "eas build --platform android",
+    "submit:ios": "eas submit --platform ios",
+    "submit:android": "eas submit --platform android",
+    "build:web": "expo export --platform web --output-dir dist"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~56.0.19",
+    "@react-native-community/datetimepicker": "9.1.0",
+    "@react-navigation/bottom-tabs": "^6.5.20",
+    "@react-navigation/native": "^6.1.17",
+    "@react-navigation/native-stack": "^6.9.26",
+    "@types/react": "~19.1.10",
+    "date-fns": "^3.6.0",
+    "expo": "~56.0.19",
+    "expo-application": "~56.0.3",
+    "expo-asset": "~56.0.22",
+    "expo-clipboard": "~56.0.4",
+    "expo-constants": "~56.0.23",
+    "expo-contacts": "~56.0.12",
+    "expo-device": "~56.0.4",
+    "expo-linking": "~56.0.16",
+    "expo-notifications": "~56.0.23",
+    "expo-secure-store": "~56.0.4",
+    "expo-status-bar": "~56.0.4",
+    "expo-updates": "~56.0.24",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-purchases": "^10.7.0",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-web": "^0.21.0",
+    "typescript": "~5.9.2"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@types/react": "~19.2.10",
+    "typescript": "~6.0.3"
+  }
+}
