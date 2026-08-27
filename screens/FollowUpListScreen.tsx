@@ -51,12 +51,15 @@ export default function FollowUpListScreen() {
 
   useEffect(() => {
     load();
+
     const sub = AppState.addEventListener('change', (next) => {
       if (appState.current.match(/inactive|background/) && next === 'active') {
         load();
       }
+
       appState.current = next;
     });
+
     return () => sub.remove();
   }, [load]);
 
@@ -68,8 +71,10 @@ export default function FollowUpListScreen() {
    */
   useEffect(() => {
     if (Platform.OS !== 'web') return;
+
     const params = new URLSearchParams(window.location.search);
     const plan = params.get('plan');
+
     if (plan && PRICE_IDS[plan]) {
       (async () => {
         try {
@@ -97,10 +102,16 @@ export default function FollowUpListScreen() {
   const replyToSender = (item: EmailTask) => {
     const subject = encodeURIComponent(`Re: ${item.subject}`);
     const quotedDate = new Date(item.receivedAt).toLocaleString();
-    const quotedFrom = item.fromName ? `${item.fromName} <${item.fromAddress}>` : item.fromAddress;
+    const quotedFrom = item.fromName
+      ? `${item.fromName} <${item.fromAddress}>`
+      : item.fromAddress;
     const quotedText = item.snippet || '';
     const body = `\n\nOn ${quotedDate}, ${quotedFrom} wrote:\n> ${quotedText}`;
-    const url = `mailto:${item.fromAddress}?subject=${subject}&body=${encodeURIComponent(body)}`;
+
+    const url = `mailto:${item.fromAddress}?subject=${subject}&body=${encodeURIComponent(
+      body
+    )}`;
+
     Linking.openURL(url).catch(() => {
       console.warn('Could not open mail client');
     });
@@ -119,8 +130,14 @@ export default function FollowUpListScreen() {
     const forwarder = (item.forwarderAddress || '').toLowerCase();
     const query = `from:${item.fromAddress} subject:${item.subject}`;
 
-    if (forwarder.includes('@gmail.com') || forwarder.includes('@googlemail.com')) {
-      const url = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(query)}`;
+    if (
+      forwarder.includes('@gmail.com') ||
+      forwarder.includes('@googlemail.com')
+    ) {
+      const url = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(
+        query
+      )}`;
+
       Linking.openURL(url).catch(() => replyToSender(item));
       return;
     }
@@ -131,7 +148,10 @@ export default function FollowUpListScreen() {
       forwarder.includes('@live.com') ||
       forwarder.includes('@msn.com')
     ) {
-      const url = `https://outlook.live.com/mail/0/search?q=${encodeURIComponent(query)}`;
+      const url = `https://outlook.live.com/mail/0/search?q=${encodeURIComponent(
+        query
+      )}`;
+
       Linking.openURL(url).catch(() => replyToSender(item));
       return;
     }
@@ -147,6 +167,7 @@ export default function FollowUpListScreen() {
    */
   const handleComplete = async (item: EmailTask) => {
     setCompleting(item.id);
+
     try {
       await api.completeTask(item.id);
       setTasks((prev) => prev.filter((t) => t.id !== item.id));
@@ -160,13 +181,16 @@ export default function FollowUpListScreen() {
   return (
     <View style={styles.container}>
       <HomeScreenPrompt />
+
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Follow-Up</Text>
+
           <Text style={styles.subtitle}>
             {tasks.length} {tasks.length === 1 ? 'email' : 'emails'} waiting
           </Text>
         </View>
+
         <TouchableOpacity
           style={styles.assignedButton}
           onPress={() => navigation.navigate('Assigned')}
@@ -179,59 +203,103 @@ export default function FollowUpListScreen() {
         data={tasks}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: 16, paddingTop: 4 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>Nothing waiting on you</Text>
+
             <Text style={styles.emptyBody}>
-              Forward an email that needs action to your MailPilotus address and it will
-              show up here.
+              Forward an email that needs action to your MailPilotus address and
+              it will show up here.
             </Text>
           </View>
         }
         renderItem={({ item }) => {
           const overdue = !!item.dueDate && isPast(new Date(item.dueDate));
+
           return (
             <TouchableOpacity
               style={styles.card}
-              onPress={() => navigation.navigate('AssignTask', { taskId: item.id })}
+              onPress={() => viewOriginal(item)}
+              activeOpacity={0.85}
             >
               <Text style={styles.from} numberOfLines={1}>
                 {item.fromName || item.fromAddress}
               </Text>
+
               <Text style={styles.subject} numberOfLines={2}>
                 {item.subject}
               </Text>
+
               {!!item.snippet && (
                 <Text style={styles.snippet} numberOfLines={1}>
                   {item.snippet}
                 </Text>
               )}
+
               <View style={styles.rowBottom}>
                 <Text style={styles.time}>
-                  forwarded {formatDistanceToNow(new Date(item.receivedAt), { addSuffix: true })}
+                  forwarded{' '}
+                  {formatDistanceToNow(new Date(item.receivedAt), {
+                    addSuffix: true,
+                  })}
                 </Text>
+
                 <View style={styles.pillRow}>
                   {!!item.dueDate && (
-                    <View style={[styles.duePill, overdue && styles.dueOverduePill]}>
-                      <Text style={[styles.duePillText, overdue && styles.dueOverduePillText]}>
-                        {overdue ? 'Overdue' : `Due ${format(new Date(item.dueDate), 'MMM d')}`}
+                    <View
+                      style={[
+                        styles.duePill,
+                        overdue && styles.dueOverduePill,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.duePillText,
+                          overdue && styles.dueOverduePillText,
+                        ]}
+                      >
+                        {overdue
+                          ? 'Overdue'
+                          : `Due ${format(
+                              new Date(item.dueDate),
+                              'MMM d'
+                            )}`}
                       </Text>
                     </View>
                   )}
+
                   <TouchableOpacity
                     style={styles.replyPill}
-                    onPress={() => viewOriginal(item)}
+                    onPress={(event) => {
+                      event.stopPropagation?.();
+                      viewOriginal(item);
+                    }}
                   >
                     <Text style={styles.replyPillText}>View Original</Text>
                   </TouchableOpacity>
-                  <View style={styles.assignPill}>
+
+                  <TouchableOpacity
+                    style={styles.assignPill}
+                    onPress={(event) => {
+                      event.stopPropagation?.();
+                      navigation.navigate('AssignTask', {
+                        taskId: item.id,
+                      });
+                    }}
+                  >
                     <Text style={styles.assignPillText}>Assign</Text>
-                  </View>
+                  </TouchableOpacity>
+
                   <TouchableOpacity
                     style={styles.completePill}
                     disabled={completing === item.id}
-                    onPress={() => handleComplete(item)}
+                    onPress={(event) => {
+                      event.stopPropagation?.();
+                      handleComplete(item);
+                    }}
                   >
                     <Text style={styles.completePillText}>
                       {completing === item.id ? 'Marking…' : 'Complete'}
@@ -248,7 +316,11 @@ export default function FollowUpListScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.ice },
+  container: {
+    flex: 1,
+    backgroundColor: colors.ice,
+  },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -256,8 +328,19 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 60,
   },
-  title: { fontSize: 30, fontWeight: '700', color: colors.navy },
-  subtitle: { fontSize: 14, color: colors.navyMuted, marginTop: 2 },
+
+  title: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: colors.navy,
+  },
+
+  subtitle: {
+    fontSize: 14,
+    color: colors.navyMuted,
+    marginTop: 2,
+  },
+
   assignedButton: {
     backgroundColor: '#fff',
     borderWidth: 1,
@@ -266,7 +349,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 100,
   },
-  assignedButtonText: { color: colors.blue, fontWeight: '600', fontSize: 13 },
+
+  assignedButtonText: {
+    color: colors.blue,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+
   card: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -275,9 +364,27 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
   },
-  from: { fontSize: 12, color: colors.navyMuted, marginBottom: 4, fontVariant: ['tabular-nums'] },
-  subject: { fontSize: 16, fontWeight: '700', color: colors.navy, lineHeight: 21 },
-  snippet: { fontSize: 13, color: colors.navyMuted, marginTop: 4 },
+
+  from: {
+    fontSize: 12,
+    color: colors.navyMuted,
+    marginBottom: 4,
+    fontVariant: ['tabular-nums'],
+  },
+
+  subject: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.navy,
+    lineHeight: 21,
+  },
+
+  snippet: {
+    fontSize: 13,
+    color: colors.navyMuted,
+    marginTop: 4,
+  },
+
   rowBottom: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -285,46 +392,90 @@ const styles = StyleSheet.create({
     marginTop: 12,
     flexWrap: 'wrap',
   },
-  time: { fontSize: 11.5, color: colors.navyFaint },
+
+  time: {
+    fontSize: 11.5,
+    color: colors.navyFaint,
+  },
+
   pillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
+
   duePill: {
     backgroundColor: 'rgba(11,37,69,0.06)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 100,
   },
-  duePillText: { fontSize: 11.5, fontWeight: '700', color: colors.navy },
+
+  duePillText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.navy,
+  },
+
   dueOverduePill: {
     backgroundColor: 'rgba(220,38,38,0.12)',
   },
-  dueOverduePillText: { color: '#DC2626' },
+
+  dueOverduePillText: {
+    color: '#DC2626',
+  },
+
   replyPill: {
     backgroundColor: 'rgba(11,37,69,0.06)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 100,
   },
-  replyPillText: { fontSize: 11.5, fontWeight: '700', color: colors.navy },
+
+  replyPillText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.navy,
+  },
+
   assignPill: {
     backgroundColor: 'rgba(22,112,232,0.1)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 100,
   },
-  assignPillText: { fontSize: 11.5, fontWeight: '700', color: colors.blue },
+
+  assignPillText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.blue,
+  },
+
   completePill: {
     backgroundColor: 'rgba(22,163,74,0.12)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 100,
   },
-  completePillText: { fontSize: 11.5, fontWeight: '700', color: '#16A34A' },
-  empty: { paddingTop: 80, alignItems: 'center', paddingHorizontal: 30 },
-  emptyTitle: { fontSize: 17, fontWeight: '700', color: colors.navy },
+
+  completePillText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#16A34A',
+  },
+
+  empty: {
+    paddingTop: 80,
+    alignItems: 'center',
+    paddingHorizontal: 30,
+  },
+
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.navy,
+  },
+
   emptyBody: {
     fontSize: 14,
     color: colors.navyMuted,
