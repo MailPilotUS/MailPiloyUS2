@@ -36,7 +36,13 @@
       },
       "permissions": [
         "READ_CONTACTS",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS",
+        "READ_CONTACTS",
+        "POST_NOTIFICATIONS",
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS"
       ]
     },
     "web": {
