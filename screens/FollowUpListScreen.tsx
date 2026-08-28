@@ -391,12 +391,12 @@ export default function FollowUpListScreen() {
 
             {tutorialPlatform === 'iphone' ? (
               <View style={styles.steps}>
-                <Text style={styles.step}>1. Open Messages.</Text>
-                <Text style={styles.step}>2. Press and hold the text message you want to track.</Text>
-                <Text style={styles.step}>3. Tap Copy.</Text>
-                <Text style={styles.step}>4. Open MailPilotUs and tap + Add Text.</Text>
-                <Text style={styles.step}>5. Tap Paste Copied Text.</Text>
-                <Text style={styles.step}>6. Tap Add to Follow-Ups or Add & Assign.</Text>
+           <Text style={styles.step}>1. Open Messages and open the text conversation you want to track.</Text>
+<Text style={styles.step}>2. Take a screenshot of the text message.</Text>
+<Text style={styles.step}>3. Open the screenshot in Photos.</Text>
+<Text style={styles.step}>4. Press and hold the text in the screenshot, then tap Copy.</Text>
+<Text style={styles.step}>5. Open MailPilotUs and tap + Add Text.</Text>
+<Text style={styles.step}>6. Tap Paste Copied Text, then tap Add to Follow-Ups or Add & Assign.</Text>
               </View>
             ) : (
               <View style={styles.steps}>
