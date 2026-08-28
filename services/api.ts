@@ -56,6 +56,12 @@ export const api = {
   async listFollowUp(): Promise<EmailTask[]> {
     return request<EmailTask[]>('/v1/tasks?status=follow_up');
   },
+  async createTextTask(text: string): Promise<EmailTask> {
+    return request<EmailTask>('/v1/tasks/text', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+  },
   async listAssigned(): Promise<EmailTask[]> {
     return request<EmailTask[]>('/v1/tasks?status=assigned');
   },
