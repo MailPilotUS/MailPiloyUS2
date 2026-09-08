@@ -253,7 +253,7 @@ export default function FollowUpListScreen() {
           return (
             <TouchableOpacity
               style={styles.card}
-              onPress={() => navigation.navigate('AssignTask', { taskId: item.id })}
+             onPress={() => viewOriginal(item)}
             >
               <View style={styles.sourceRow}>
                 {item.sourceType === 'text' && (
