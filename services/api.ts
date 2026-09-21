@@ -62,6 +62,21 @@ export const api = {
       body: JSON.stringify({ text }),
     });
   },
+  async createReminder(title: string, entity: string, dueDate: string | null): Promise<EmailTask> {
+    return request<EmailTask>('/v1/tasks/reminder', {
+      method: 'POST',
+      body: JSON.stringify({ title, entity, dueDate }),
+    });
+  },
+  async updateReminder(taskId: string, title: string, entity: string, dueDate: string | null): Promise<EmailTask> {
+    return request<EmailTask>(`/v1/tasks/${taskId}/reminder`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title, entity, dueDate }),
+    });
+  },
+  async deleteTask(taskId: string): Promise<void> {
+    return request<void>(`/v1/tasks/${taskId}`, { method: 'DELETE' });
+  },
   async listAssigned(): Promise<EmailTask[]> {
     return request<EmailTask[]>('/v1/tasks?status=assigned');
   },
