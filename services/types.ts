@@ -12,6 +12,8 @@ export interface EmailTask {
   assignedAt?: string | null;
   assignedByMe: boolean; // true if the current user assigned it (vs. was assigned to them)
   dueDate?: string | null; // ISO timestamp, set manually by the user
+  sourceType?: 'email' | 'text' | 'reminder';
+  entity?: string | null;
 }
 export interface Contact {
   id: string;
