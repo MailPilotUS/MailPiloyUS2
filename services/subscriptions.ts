@@ -5,20 +5,10 @@ import Purchases, { PurchasesOffering, CustomerInfo } from 'react-native-purchas
 /**
  * Subscription handling via RevenueCat.
  *
- * Why RevenueCat: Apple and Google require auto-renewing subscriptions sold
- * inside an iOS/Android app to go through StoreKit / Google Play Billing —
- * you cannot sell a "7 day free trial then $x/month" subscription with Stripe
- * inside the native apps. RevenueCat wraps StoreKit 2 + Play Billing behind
- * one API and reports entitlement status back to our own backend via webhook,
- * so the backend stays the single source of truth for "is this user entitled".
- *
- * The 7-day free trial itself is NOT implemented in app code — it is
- * configured as an "Introductory Offer" (iOS) / "Free trial" phase (Android)
- * on the subscription product in App Store Connect / Google Play Console.
- * See /docs/deployment-guide.docx section "Configuring the 7-day free trial".
- *
- * On web, RevenueCat's Web Billing (Stripe-backed) is used instead so the
- * same entitlement model applies to mailpilotus.ai signups.
+ * Important behavior:
+ * - A user who cancels auto-renewal keeps access until the paid/trial period expires.
+ * - A detected billing problem/nonpayment suspends app access until billing is fixed.
+ * - An expired entitlement suspends app access.
  */
 
 const ENTITLEMENT_ID = 'pro_access';
@@ -27,26 +17,38 @@ export const PRODUCT_IDS = {
   annual: 'mailpilotus_annual',
 };
 
-let configured = false;
+export type SubscriptionStatus =
+  | 'trialing'
+  | 'active'
+  | 'billing_issue'
+  | 'expired'
+  | 'none';
 
-// react-native-purchases (the StoreKit/Play Billing bridge) only works on
-// iOS and Android — there is no native module for it on web. RevenueCat's
-// separate Web Billing SDK would be used for a real production web build
-// (see docs/mailpilotus-deployment-guide.docx, section 4.4). For local
-// testing in a browser, we no-op these calls instead of crashing, and treat
-// the web user as already entitled so you can click through the rest of the
-// app (Follow-Up, Assign, Assigned) without a real purchase.
+let configured = false;
+let configuredUserId: string | null = null;
 const IS_WEB = Platform.OS === 'web';
 
-export function configurePurchases(appUserId: string) {
-  if (IS_WEB || configured) return;
-  const apiKey =
-    Platform.OS === 'ios'
-      ? (Constants.expoConfig?.extra?.revenueCatApiKeyIos as string)
-      : (Constants.expoConfig?.extra?.revenueCatApiKeyAndroid as string);
+export async function configurePurchases(appUserId: string) {
+  if (IS_WEB) return;
 
-  Purchases.configure({ apiKey, appUserID: appUserId });
-  configured = true;
+  if (!configured) {
+    const apiKey =
+      Platform.OS === 'ios'
+        ? (Constants.expoConfig?.extra?.revenueCatApiKeyIos as string)
+        : (Constants.expoConfig?.extra?.revenueCatApiKeyAndroid as string);
+
+    Purchases.configure({ apiKey, appUserID: appUserId });
+    configured = true;
+    configuredUserId = appUserId;
+    return;
+  }
+
+  // The SDK is configured once per app process. If a different MailPilotUs
+  // account signs in, explicitly identify that RevenueCat customer.
+  if (configuredUserId !== appUserId) {
+    await Purchases.logIn(appUserId);
+    configuredUserId = appUserId;
+  }
 }
 
 export async function getOfferings(): Promise<PurchasesOffering | null> {
@@ -61,20 +63,56 @@ export async function purchasePackage(pkg: any): Promise<CustomerInfo | null> {
   return customerInfo;
 }
 
+function backendStatusToEntitlement(backendStatus?: string): SubscriptionStatus {
+  switch (backendStatus) {
+    case 'trialing':
+      return 'trialing';
+    case 'active':
+      return 'active';
+    case 'past_due':
+    case 'unpaid':
+    case 'billing_issue':
+      return 'billing_issue';
+    case 'expired':
+    case 'canceled':
+    case 'cancelled':
+      return 'expired';
+    default:
+      return 'none';
+  }
+}
+
 export async function getEntitlementStatus(
   backendStatus?: string
-): Promise<'trialing' | 'active' | 'expired' | 'none'> {
+): Promise<SubscriptionStatus> {
   if (IS_WEB) {
-    // On web there's no RevenueCat — trust the backend's Stripe-derived status instead.
-    if (backendStatus === 'active') return 'active';
-    return 'none';
+    // Web billing is Stripe-backed; the backend is authoritative.
+    return backendStatusToEntitlement(backendStatus);
   }
+
   const info = await Purchases.getCustomerInfo();
-  const entitlement = info.entitlements.active[ENTITLEMENT_ID];
-  if (!entitlement) return 'none';
-  if ((entitlement as any).periodType === 'TRIAL') return 'trialing';
-  return 'active';
+  const activeEntitlement = info.entitlements.active[ENTITLEMENT_ID] as any;
+
+  if (activeEntitlement) {
+    // Cancellation by itself is NOT a reason to suspend. RevenueCat keeps the
+    // entitlement active through the already-paid expiration date.
+    // A billing issue, however, is treated as nonpayment and suspends access.
+    if (activeEntitlement.billingIssueDetectedAt) return 'billing_issue';
+    if (activeEntitlement.periodType === 'TRIAL') return 'trialing';
+    return 'active';
+  }
+
+  // No currently-active entitlement. Distinguish a lapsed subscriber from a
+  // user who has never subscribed so the UI can explain what happened.
+  const previousEntitlement = (info.entitlements.all as any)?.[ENTITLEMENT_ID];
+  if (previousEntitlement) {
+    if (previousEntitlement.billingIssueDetectedAt) return 'billing_issue';
+    if (previousEntitlement.expirationDate) return 'expired';
+  }
+
+  return 'none';
 }
+
 export async function restorePurchases(): Promise<CustomerInfo | null> {
   if (IS_WEB) return null;
   return Purchases.restorePurchases();
