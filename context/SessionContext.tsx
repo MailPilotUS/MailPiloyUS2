@@ -1,77 +1,117 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  ReactNode,
-} from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { AppState, Platform } from 'react-native';
+import { storage } from '../services/storage';
+import { User } from '../services/types';
+import { api } from '../services/api';
+import {
+  configurePurchases,
+  getEntitlementStatus,
+  SubscriptionStatus,
+} from '../services/subscriptions';
 
-type SessionContextType = {
-  token: string | null;
-  user: any | null;
+interface SessionState {
+  user: User | null;
   loading: boolean;
-  signIn: (token: string, user: any) => Promise<void>;
-  signOut: () => Promise<void>;
-};
+  subscriptionStatus: SubscriptionStatus;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  refreshEntitlement: () => Promise<void>;
+}
 
-const SessionContext = createContext<SessionContextType | undefined>(
-  undefined
-);
+const SessionContext = createContext<SessionState | undefined>(undefined);
 
-export function SessionProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<any | null>(null);
+export function SessionProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>('none');
 
-  useEffect(() => {
-    restoreSession();
+  const applyEntitlement = useCallback(async (currentUser: User) => {
+    await configurePurchases(currentUser.id);
+    const status = await getEntitlementStatus(currentUser.subscriptionStatus);
+    setSubscriptionStatus(status);
   }, []);
 
-  async function restoreSession() {
+  const bootstrap = useCallback(async () => {
+    setLoading(true);
     try {
-      const savedToken = await AsyncStorage.getItem('token');
-      const savedUser = await AsyncStorage.getItem('user');
-
-      if (savedToken) {
-        setToken(savedToken);
+      if (Platform.OS === 'web') {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('newaccount') === '1') {
+          await storage.deleteItem('mailpilotus_session_token');
+          setLoading(false);
+          return;
+        }
       }
 
-      if (savedUser) {
-        setUser(JSON.parse(savedUser));
+      const token = await storage.getItem('mailpilotus_session_token');
+      if (token) {
+        const me = await api.me();
+        setUser(me);
+        await applyEntitlement(me);
       }
-    } catch (error) {
-      console.error('Unable to restore session:', error);
+    } catch {
+      // no valid session
     } finally {
       setLoading(false);
     }
-  }
+  }, [applyEntitlement]);
 
-  async function signIn(newToken: string, newUser: any) {
-    setToken(newToken);
-    setUser(newUser);
+  useEffect(() => {
+    bootstrap();
+  }, [bootstrap]);
 
-    await AsyncStorage.setItem('token', newToken);
-    await AsyncStorage.setItem('user', JSON.stringify(newUser));
-  }
+  const login = async (email: string, password: string) => {
+    const { user: u } = await api.login(email, password);
+    setUser(u);
+    await applyEntitlement(u);
+  };
 
-  async function signOut() {
-    setToken(null);
+  const signup = async (email: string, password: string) => {
+    const { user: u } = await api.signup(email, password);
+    setUser(u);
+    await applyEntitlement(u);
+  };
+
+  const logout = async () => {
+    await storage.deleteItem('mailpilotus_session_token');
     setUser(null);
+    setSubscriptionStatus('none');
+  };
 
-    await AsyncStorage.removeItem('token');
-    await AsyncStorage.removeItem('user');
-  }
+  const refreshEntitlement = useCallback(async () => {
+    if (!user) {
+      setSubscriptionStatus('none');
+      return;
+    }
+
+    try {
+      // Refresh the backend user first. This matters on web/Stripe and also
+      // keeps the local User object current after a billing webhook update.
+      const freshUser = await api.me();
+      setUser(freshUser);
+      await applyEntitlement(freshUser);
+    } catch {
+      // If refreshing /me fails temporarily, still re-check native RevenueCat
+      // rather than granting access based on a stale cached state.
+      await applyEntitlement(user);
+    }
+  }, [user, applyEntitlement]);
+
+  // Re-check entitlement whenever the app returns to the foreground. This is
+  // what catches a cancellation reaching its expiration date or a billing
+  // problem being resolved while the user was outside the app.
+  useEffect(() => {
+    if (!user) return;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshEntitlement().catch(() => undefined);
+    });
+    return () => subscription.remove();
+  }, [user, refreshEntitlement]);
 
   return (
     <SessionContext.Provider
-      value={{
-        token,
-        user,
-        loading,
-        signIn,
-        signOut,
-      }}
+      value={{ user, loading, subscriptionStatus, login, signup, logout, refreshEntitlement }}
     >
       {children}
     </SessionContext.Provider>
@@ -79,11 +119,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 }
 
 export function useSession() {
-  const context = useContext(SessionContext);
-
-  if (!context) {
-    throw new Error('useSession must be used inside SessionProvider');
-  }
-
-  return context;
+  const ctx = useContext(SessionContext);
+  if (!ctx) throw new Error('useSession must be used within SessionProvider');
+  return ctx;
 }
