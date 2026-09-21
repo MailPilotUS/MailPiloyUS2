@@ -48,7 +48,7 @@ export default function RootNavigator() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
           <Stack.Screen name="Auth" component={AuthScreen} />
-        ) : subscriptionStatus === 'none' || subscriptionStatus === 'expired' ? (
+        ) : subscriptionStatus === 'none' || subscriptionStatus === 'expired' || subscriptionStatus === 'billing_issue' ? (
           <Stack.Screen name="Paywall" component={PaywallScreen} />
         ) : (
           <>
