@@ -23,6 +23,6 @@ export interface User {
   id: string;
   email: string;
   forwardingAddress: string; // e.g. jane.k4f9@fly.mailpilotus.ai
-  subscriptionStatus: 'trialing' | 'active' | 'expired' | 'none';
+  subscriptionStatus: 'trialing' | 'active' | 'billing_issue' | 'past_due' | 'unpaid' | 'canceled' | 'cancelled' | 'expired' | 'none';
   trialEndsAt?: string | null;
 }
