@@ -22,6 +22,7 @@ import { api } from '../services/api';
 import { colors } from '../theme';
 import HomeScreenPrompt from './HomeScreenPrompt';
 import * as Clipboard from 'expo-clipboard';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const PRICE_IDS: Record<string, string> = {
   'pro-monthly': 'price_1Tx4i6FZ1VLALyugBjZvOONs',
@@ -51,6 +52,14 @@ export default function FollowUpListScreen() {
   const [tutorialPlatform, setTutorialPlatform] = useState<'iphone' | 'android'>('iphone');
   const [textMessage, setTextMessage] = useState('');
   const [savingText, setSavingText] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const [reminderTitle, setReminderTitle] = useState('');
+  const [reminderEntity, setReminderEntity] = useState('');
+  const [reminderDate, setReminderDate] = useState<Date>(() => new Date(Date.now() + 60 * 60 * 1000));
+  const [webReminderDate, setWebReminderDate] = useState(() => format(new Date(Date.now() + 60 * 60 * 1000), 'yyyy-MM-dd'));
+  const [webReminderTime, setWebReminderTime] = useState(() => format(new Date(Date.now() + 60 * 60 * 1000), 'HH:mm'));
+  const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
+  const [savingReminder, setSavingReminder] = useState(false);
   const appState = useRef<AppStateStatus>(AppState.currentState);
 
   const load = useCallback(async () => {
@@ -142,6 +151,84 @@ export default function FollowUpListScreen() {
     }
   };
 
+  const openNewReminder = () => {
+    const next = new Date(Date.now() + 60 * 60 * 1000);
+    setEditingReminderId(null);
+    setReminderTitle('');
+    setReminderEntity('');
+    setReminderDate(next);
+    setWebReminderDate(format(next, 'yyyy-MM-dd'));
+    setWebReminderTime(format(next, 'HH:mm'));
+    setReminderOpen(true);
+  };
+
+  const openEditReminder = (item: EmailTask) => {
+    const next = item.dueDate ? new Date(item.dueDate) : new Date(Date.now() + 60 * 60 * 1000);
+    setEditingReminderId(item.id);
+    setReminderTitle(item.subject);
+    setReminderEntity(item.entity || item.snippet || '');
+    setReminderDate(next);
+    setWebReminderDate(format(next, 'yyyy-MM-dd'));
+    setWebReminderTime(format(next, 'HH:mm'));
+    setReminderOpen(true);
+  };
+
+  const getReminderDueDate = (): string | null => {
+    if (Platform.OS !== 'web') return reminderDate.toISOString();
+    const candidate = new Date(`${webReminderDate}T${webReminderTime}:00`);
+    return Number.isNaN(candidate.getTime()) ? null : candidate.toISOString();
+  };
+
+  const saveReminder = async () => {
+    const title = reminderTitle.trim();
+    if (!title) {
+      Alert.alert('Reminder needed', 'Enter what you want to be reminded about.');
+      return;
+    }
+    const dueDate = getReminderDueDate();
+    if (!dueDate) {
+      Alert.alert('Date and time needed', 'Enter a valid reminder date and time.');
+      return;
+    }
+    setSavingReminder(true);
+    try {
+      if (editingReminderId) {
+        const updated = await api.updateReminder(editingReminderId, title, reminderEntity.trim(), dueDate);
+        setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      } else {
+        const created = await api.createReminder(title, reminderEntity.trim(), dueDate);
+        setTasks((prev) => [created, ...prev]);
+      }
+      setReminderOpen(false);
+    } catch (e: any) {
+      Alert.alert('Could not save reminder', e.message);
+    } finally {
+      setSavingReminder(false);
+    }
+  };
+
+  const deleteReminder = async () => {
+    if (!editingReminderId) return;
+    const id = editingReminderId;
+    const doDelete = async () => {
+      try {
+        await api.deleteTask(id);
+        setTasks((prev) => prev.filter((t) => t.id !== id));
+        setReminderOpen(false);
+      } catch (e: any) {
+        Alert.alert('Could not delete reminder', e.message);
+      }
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm('Delete this reminder?')) await doDelete();
+    } else {
+      Alert.alert('Delete reminder?', 'This cannot be undone.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: doDelete },
+      ]);
+    }
+  };
+
   /**
    * Fallback used when we can't build a deep link back into the user's own
    * inbox (e.g. unknown/business email provider). Opens a mailto: reply
@@ -222,6 +309,9 @@ export default function FollowUpListScreen() {
           </Text>
         </View>
         <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.reminderButton} onPress={openNewReminder}>
+            <Text style={styles.addTextButtonText}>+ Reminder</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.addTextButton} onPress={openAddText}>
             <Text style={styles.addTextButtonText}>+ Add Text</Text>
           </TouchableOpacity>
@@ -243,8 +333,7 @@ export default function FollowUpListScreen() {
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>Nothing waiting on you</Text>
             <Text style={styles.emptyBody}>
-              Forward an email to MailPilotUs or tap + Add Text to save a text message
-              that needs follow-up.
+              Forward an email, add a text, or tap + Reminder to create a standalone reminder.
             </Text>
           </View>
         }
@@ -253,29 +342,34 @@ export default function FollowUpListScreen() {
           return (
             <TouchableOpacity
               style={styles.card}
-             onPress={() => viewOriginal(item)}
+             onPress={() => item.sourceType === 'reminder' ? openEditReminder(item) : viewOriginal(item)}
             >
               <View style={styles.sourceRow}>
+                {item.sourceType === 'reminder' && (
+                  <View style={styles.reminderBadge}>
+                    <Text style={styles.reminderBadgeText}>REMINDER</Text>
+                  </View>
+                )}
                 {item.sourceType === 'text' && (
                   <View style={styles.textBadge}>
                     <Text style={styles.textBadgeText}>TEXT MESSAGE</Text>
                   </View>
                 )}
                 <Text style={styles.from} numberOfLines={1}>
-                  {item.fromName || item.fromAddress || (item.sourceType === 'text' ? 'Copied text' : '')}
+                  {item.sourceType === 'reminder' ? (item.entity || 'Standalone reminder') : (item.fromName || item.fromAddress || (item.sourceType === 'text' ? 'Copied text' : ''))}
                 </Text>
               </View>
               <Text style={styles.subject} numberOfLines={2}>
                 {item.subject}
               </Text>
-              {!!item.snippet && (
+              {!!item.snippet && item.sourceType !== 'reminder' && (
                 <Text style={styles.snippet} numberOfLines={1}>
                   {item.snippet}
                 </Text>
               )}
               <View style={styles.rowBottom}>
                 <Text style={styles.time}>
-                  {item.sourceType === 'text' ? 'added' : 'forwarded'} {formatDistanceToNow(new Date(item.receivedAt), { addSuffix: true })}
+                  {item.sourceType === 'reminder' ? 'created' : item.sourceType === 'text' ? 'added' : 'forwarded'} {formatDistanceToNow(new Date(item.receivedAt), { addSuffix: true })}
                 </Text>
                 <View style={styles.pillRow}>
                   {!!item.dueDate && (
@@ -285,10 +379,10 @@ export default function FollowUpListScreen() {
                       </Text>
                     </View>
                   )}
-                  {item.sourceType !== 'text' && (
+                  {item.sourceType !== 'text' && item.sourceType !== 'reminder' && (
                     <TouchableOpacity
                       style={styles.replyPill}
-                      onPress={() => viewOriginal(item)}
+                      onPress={() => item.sourceType === 'reminder' ? openEditReminder(item) : viewOriginal(item)}
                     >
                       <Text style={styles.replyPillText}>View Original</Text>
                     </TouchableOpacity>
@@ -311,6 +405,64 @@ export default function FollowUpListScreen() {
           );
         }}
       />
+
+      <Modal visible={reminderOpen} animationType="slide" transparent onRequestClose={() => setReminderOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>{editingReminderId ? 'Edit Reminder' : 'New Reminder'}</Text>
+                <Text style={styles.modalSubtitle}>No email or text is required.</Text>
+              </View>
+              <TouchableOpacity onPress={() => setReminderOpen(false)}>
+                <Text style={styles.closeText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.inputLabel}>REMIND ME TO</Text>
+            <TextInput
+              style={styles.reminderInput}
+              value={reminderTitle}
+              onChangeText={setReminderTitle}
+              placeholder="Call John about the quote"
+              placeholderTextColor={colors.navyFaint}
+            />
+
+            <Text style={styles.inputLabel}>PERSON / COMPANY / ENTITY (OPTIONAL)</Text>
+            <TextInput
+              style={styles.reminderInput}
+              value={reminderEntity}
+              onChangeText={setReminderEntity}
+              placeholder="ABC Company"
+              placeholderTextColor={colors.navyFaint}
+            />
+
+            <Text style={styles.inputLabel}>DATE & TIME</Text>
+            {Platform.OS === 'web' ? (
+              <View style={styles.webDateRow}>
+                <TextInput style={[styles.reminderInput, styles.webDateInput]} value={webReminderDate} onChangeText={setWebReminderDate} placeholder="YYYY-MM-DD" />
+                <TextInput style={[styles.reminderInput, styles.webTimeInput]} value={webReminderTime} onChangeText={setWebReminderTime} placeholder="HH:MM" />
+              </View>
+            ) : (
+              <View style={styles.nativePickerRow}>
+                <DateTimePicker value={reminderDate} mode="date" onChange={(_, d) => d && setReminderDate(d)} />
+                <DateTimePicker value={reminderDate} mode="time" onChange={(_, d) => d && setReminderDate(d)} />
+              </View>
+            )}
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.saveButton, savingReminder && styles.disabledButton]} disabled={savingReminder} onPress={saveReminder}>
+                <Text style={styles.saveButtonText}>{savingReminder ? 'Saving…' : editingReminderId ? 'Save Changes' : 'Save Reminder'}</Text>
+              </TouchableOpacity>
+              {editingReminderId && (
+                <TouchableOpacity style={styles.deleteButton} disabled={savingReminder} onPress={deleteReminder}>
+                  <Text style={styles.deleteButtonText}>Delete</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={addTextOpen} animationType="slide" transparent onRequestClose={() => setAddTextOpen(false)}>
         <View style={styles.modalBackdrop}>
@@ -427,6 +579,12 @@ const styles = StyleSheet.create({
   title: { fontSize: 30, fontWeight: '700', color: colors.navy },
   subtitle: { fontSize: 14, color: colors.navyMuted, marginTop: 2 },
   headerActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  reminderButton: {
+    backgroundColor: colors.navy,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 100,
+  },
   addTextButton: {
     backgroundColor: colors.blue,
     paddingHorizontal: 14,
@@ -452,6 +610,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sourceRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  reminderBadge: {
+    backgroundColor: 'rgba(124,58,237,0.12)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 100,
+  },
+  reminderBadgeText: { fontSize: 9.5, fontWeight: '800', color: '#7C3AED', letterSpacing: 0.4 },
   textBadge: {
     backgroundColor: 'rgba(22,112,232,0.1)',
     paddingHorizontal: 7,
@@ -542,6 +707,22 @@ const styles = StyleSheet.create({
   },
   helpButtonText: { color: colors.blue, fontWeight: '700', fontSize: 13 },
   inputLabel: { fontSize: 11, fontWeight: '800', color: colors.navyMuted, marginTop: 18, marginBottom: 7, letterSpacing: 0.7 },
+  reminderInput: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    color: colors.navy,
+    fontSize: 15,
+    backgroundColor: '#fff',
+  },
+  webDateRow: { flexDirection: 'row', gap: 10 },
+  webDateInput: { flex: 1 },
+  webTimeInput: { width: 110 },
+  nativePickerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  deleteButton: { backgroundColor: 'rgba(220,38,38,0.1)', borderRadius: 12, paddingVertical: 13, paddingHorizontal: 18 },
+  deleteButtonText: { color: '#DC2626', fontWeight: '800' },
   textInput: {
     minHeight: 150,
     borderWidth: 1,
