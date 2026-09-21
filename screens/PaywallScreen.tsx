@@ -45,7 +45,7 @@ const WEB_PRICES: Record<'monthly' | 'annual', string> = {
  *   lapsed would have no way to sign out or switch accounts at all.
  */
 export default function PaywallScreen() {
-  const { refreshEntitlement, logout } = useSession();
+  const { refreshEntitlement, logout, subscriptionStatus } = useSession();
   const [selected, setSelected] = useState<'monthly' | 'annual'>('annual');
   const [offering, setOffering] = useState<any>(null);
   const [purchasing, setPurchasing] = useState(false);
@@ -111,11 +111,18 @@ export default function PaywallScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.eyebrow}>7 DAYS FREE, THEN YOUR PLAN</Text>
-      <Text style={styles.title}>Try MailPilotus free</Text>
+      <Text style={styles.eyebrow}>
+        {subscriptionStatus === 'billing_issue' ? 'PAYMENT REQUIRED' : subscriptionStatus === 'expired' ? 'SUBSCRIPTION ENDED' : '7 DAYS FREE, THEN YOUR PLAN'}
+      </Text>
+      <Text style={styles.title}>
+        {subscriptionStatus === 'billing_issue' ? 'Update your payment' : subscriptionStatus === 'expired' ? 'Reactivate MailPilotUs' : 'Try MailPilotUs free'}
+      </Text>
       <Text style={styles.body}>
-        Start free for 7 days. If you don't cancel before the trial ends, your selected plan
-        begins automatically. Cancel anytime from your {IS_WEB ? 'billing' : "device's subscription"} settings.
+        {subscriptionStatus === 'billing_issue'
+          ? 'Your subscription has a billing problem, so MailPilotUs is temporarily suspended. Update your payment method, then return here to restore access.'
+          : subscriptionStatus === 'expired'
+            ? 'Your previous subscription has ended. Choose a plan below to restore full access to MailPilotUs.'
+            : `Start free for 7 days. If you don't cancel before the trial ends, your selected plan begins automatically. Cancel anytime from your ${IS_WEB ? 'billing' : "device's subscription"} settings.`}
       </Text>
 
       <View style={styles.plans}>
@@ -147,13 +154,15 @@ export default function PaywallScreen() {
 
       <TouchableOpacity
         style={styles.cta}
-        onPress={handleStartTrial}
+        onPress={subscriptionStatus === 'billing_issue' ? openManageSubscriptions : handleStartTrial}
         disabled={purchasing}
       >
         {purchasing ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.ctaText}>Try it free for 7 days</Text>
+          <Text style={styles.ctaText}>
+            {subscriptionStatus === 'billing_issue' ? 'Update payment method' : subscriptionStatus === 'expired' ? 'Reactivate subscription' : 'Try it free for 7 days'}
+          </Text>
         )}
       </TouchableOpacity>
 
