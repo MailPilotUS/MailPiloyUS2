@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   FlatList,
   StyleSheet,
   RefreshControl,
@@ -60,6 +61,10 @@ export default function FollowUpListScreen() {
   const [webReminderTime, setWebReminderTime] = useState(() => format(new Date(Date.now() + 60 * 60 * 1000), 'HH:mm'));
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
   const [savingReminder, setSavingReminder] = useState(false);
+  const [originalImageOpen, setOriginalImageOpen] = useState(false);
+  const [originalImageUri, setOriginalImageUri] = useState<string | null>(null);
+  const [originalImageTitle, setOriginalImageTitle] = useState('Original Screenshot');
+  const [loadingOriginal, setLoadingOriginal] = useState<string | null>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
 
   const load = useCallback(async () => {
@@ -256,7 +261,31 @@ export default function FollowUpListScreen() {
    * provider, or when forwarderAddress isn't populated (older items
    * forwarded before this field existed).
    */
-  const viewOriginal = (item: EmailTask) => {
+  const closeOriginalImage = () => {
+    if (Platform.OS === 'web' && originalImageUri?.startsWith('blob:')) {
+      URL.revokeObjectURL(originalImageUri);
+    }
+    setOriginalImageOpen(false);
+    setOriginalImageUri(null);
+    setOriginalImageTitle('Original Screenshot');
+  };
+
+  const viewOriginal = async (item: EmailTask) => {
+    if (item.hasOriginalImage) {
+      setLoadingOriginal(item.id);
+      try {
+        const uri = await api.getOriginalImage(item.id);
+        setOriginalImageUri(uri);
+        setOriginalImageTitle(item.originalImageName || item.subject || 'Original Screenshot');
+        setOriginalImageOpen(true);
+      } catch (e: any) {
+        Alert.alert('Could not open screenshot', e?.message || 'The original screenshot could not be loaded.');
+      } finally {
+        setLoadingOriginal(null);
+      }
+      return;
+    }
+
     const forwarder = (item.forwarderAddress || '').toLowerCase();
     const query = `from:${item.fromAddress} subject:${item.subject}`;
 
@@ -277,8 +306,6 @@ export default function FollowUpListScreen() {
       return;
     }
 
-    // iCloud, Yahoo, business domains, or unknown provider - fall back to
-    // the mailto reply-with-quoted-text behavior.
     replyToSender(item);
   };
 
@@ -384,7 +411,7 @@ export default function FollowUpListScreen() {
                       style={styles.replyPill}
                       onPress={() => item.sourceType === 'reminder' ? openEditReminder(item) : viewOriginal(item)}
                     >
-                      <Text style={styles.replyPillText}>View Original</Text>
+                      <Text style={styles.replyPillText}>{loadingOriginal === item.id ? 'Opening…' : 'View Original'}</Text>
                     </TouchableOpacity>
                   )}
                   <View style={styles.assignPill}>
@@ -405,6 +432,41 @@ export default function FollowUpListScreen() {
           );
         }}
       />
+
+      <Modal
+        visible={originalImageOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={closeOriginalImage}
+      >
+        <View style={styles.imageModalBackdrop}>
+          <View style={styles.imageModalCard}>
+            <View style={styles.imageModalHeader}>
+              <Text style={styles.imageModalTitle} numberOfLines={1}>
+                {originalImageTitle}
+              </Text>
+              <TouchableOpacity onPress={closeOriginalImage}>
+                <Text style={styles.closeText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+
+            {originalImageUri ? (
+              <ScrollView
+                style={styles.imageScroll}
+                contentContainerStyle={styles.imageScrollContent}
+                maximumZoomScale={5}
+                minimumZoomScale={1}
+              >
+                <Image
+                  source={{ uri: originalImageUri }}
+                  style={styles.originalImage}
+                  resizeMode="contain"
+                />
+              </ScrollView>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={reminderOpen} animationType="slide" transparent onRequestClose={() => setReminderOpen(false)}>
         <View style={styles.modalBackdrop}>
@@ -672,6 +734,48 @@ const styles = StyleSheet.create({
     borderRadius: 100,
   },
   completePillText: { fontSize: 11.5, fontWeight: '700', color: '#16A34A' },
+  imageModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(11,37,69,0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  imageModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    width: '100%',
+    maxWidth: 900,
+    height: '90%',
+    overflow: 'hidden',
+  },
+  imageModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+  },
+  imageModalTitle: {
+    flex: 1,
+    marginRight: 12,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.navy,
+  },
+  imageScroll: { flex: 1 },
+  imageScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 12,
+  },
+  originalImage: {
+    width: '100%',
+    height: 700,
+  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(11,37,69,0.42)',
