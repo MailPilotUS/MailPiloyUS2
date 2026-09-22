@@ -1,30 +1,68 @@
-export type TaskStatus = 'follow_up' | 'assigned' | 'done';
+export type TaskStatus =
+  | 'follow_up'
+  | 'assigned'
+  | 'done';
+
 export interface EmailTask {
   id: string;
+
   fromAddress: string;
   fromName?: string;
-  forwarderAddress?: string; // the account holder's own address that forwarded this email in
+
+  // The account holder's own address that forwarded this email in
+  forwarderAddress?: string;
+
   subject: string;
   snippet?: string;
-  receivedAt: string; // ISO timestamp of when the forward landed
+
+  // ISO timestamp of when the forward landed
+  receivedAt: string;
+
   status: TaskStatus;
+
   assignedTo?: Contact | null;
   assignedAt?: string | null;
-  assignedByMe: boolean; // true if the current user assigned it (vs. was assigned to them)
-  dueDate?: string | null; // ISO timestamp, set manually by the user
+
+  // True if the current user assigned it
+  assignedByMe: boolean;
+
+  // ISO timestamp, set manually by the user
+  dueDate?: string | null;
+
   sourceType?: 'email' | 'text' | 'reminder';
+
   entity?: string | null;
+
+  // Original screenshot/image attached to a forwarded message
+  hasOriginalImage?: boolean;
+  originalImageType?: string | null;
+  originalImageName?: string | null;
 }
+
 export interface Contact {
   id: string;
   name: string;
   email?: string;
   phone?: string;
 }
+
 export interface User {
   id: string;
   email: string;
-  forwardingAddress: string; // e.g. jane.k4f9@fly.mailpilotus.ai
-  subscriptionStatus: 'trialing' | 'active' | 'billing_issue' | 'past_due' | 'unpaid' | 'canceled' | 'cancelled' | 'expired' | 'none';
+
+  // e.g. jane.k4f9@fly.mailpilotus.ai
+  forwardingAddress: string;
+
+  subscriptionStatus:
+    | 'trialing'
+    | 'active'
+    | 'billing_issue'
+    | 'past_due'
+    | 'unpaid'
+    | 'canceled'
+    | 'cancelled'
+    | 'expired'
+    | 'none';
+
   trialEndsAt?: string | null;
 }
