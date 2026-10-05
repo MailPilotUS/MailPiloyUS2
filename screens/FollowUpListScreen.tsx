@@ -30,19 +30,6 @@ const PRICE_IDS: Record<string, string> = {
   'pro-annual': 'price_1Tx5MYFZ1VLALyugWErltx9a',
 };
 
-/**
- * Home screen. Requirement: "whenever the device is awakened, a list appears
- * on the device that shows all emails so forwarded." We satisfy this by:
- *  1) Refetching the Follow-Up list whenever AppState transitions to 'active'
- *     (i.e. the device/app is woken up or brought to the foreground).
- *  2) This screen is the initial route, so it's what the user sees first.
- * A background push notification (registered in services/notifications.ts)
- * also updates a badge count so new items are visible from the lock screen.
- *
- * Due dates are set on the Assign screen (preset chips there), not from
- * here - this list just shows a read-only due date / overdue badge when
- * one has been set.
- */
 export default function FollowUpListScreen() {
   const navigation = useNavigation<any>();
   const [tasks, setTasks] = useState<EmailTask[]>([]);
@@ -50,7 +37,8 @@ export default function FollowUpListScreen() {
   const [completing, setCompleting] = useState<string | null>(null);
   const [addTextOpen, setAddTextOpen] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
-  const [tutorialPlatform, setTutorialPlatform] = useState<'iphone' | 'android'>('iphone');
+  const [tutorialPlatform, setTutorialPlatform] =
+    useState<'iphone' | 'android'>('iphone');
   const [textMessage, setTextMessage] = useState('');
   const [savingText, setSavingText] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
@@ -59,18 +47,23 @@ export default function FollowUpListScreen() {
   const [reminderDate, setReminderDate] = useState<Date>(
     () => new Date(Date.now() + 60 * 60 * 1000)
   );
-  const [webReminderDate, setWebReminderDate] = useState(
-    () => format(new Date(Date.now() + 60 * 60 * 1000), 'yyyy-MM-dd')
+  const [webReminderDate, setWebReminderDate] = useState(() =>
+    format(new Date(Date.now() + 60 * 60 * 1000), 'yyyy-MM-dd')
   );
-  const [webReminderTime, setWebReminderTime] = useState(
-    () => format(new Date(Date.now() + 60 * 60 * 1000), 'HH:mm')
+  const [webReminderTime, setWebReminderTime] = useState(() =>
+    format(new Date(Date.now() + 60 * 60 * 1000), 'HH:mm')
   );
-  const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
+  const [editingReminderId, setEditingReminderId] =
+    useState<string | null>(null);
   const [savingReminder, setSavingReminder] = useState(false);
   const [originalImageOpen, setOriginalImageOpen] = useState(false);
-  const [originalImageUri, setOriginalImageUri] = useState<string | null>(null);
-  const [originalImageTitle, setOriginalImageTitle] = useState('Original Screenshot');
-  const [loadingOriginal, setLoadingOriginal] = useState<string | null>(null);
+  const [originalImageUri, setOriginalImageUri] =
+    useState<string | null>(null);
+  const [originalImageTitle, setOriginalImageTitle] =
+    useState('Original Screenshot');
+  const [loadingOriginal, setLoadingOriginal] =
+    useState<string | null>(null);
+
   const appState = useRef<AppStateStatus>(AppState.currentState);
 
   const load = useCallback(async () => {
@@ -95,12 +88,6 @@ export default function FollowUpListScreen() {
     return () => sub.remove();
   }, [load]);
 
-  /**
-   * If the user arrived here already logged in (e.g. clicked a mailpilotus.com
-   * pricing button while a session was still active, skipping the sign-in
-   * screen entirely), pick up the ?plan= param here too and send them
-   * straight to Stripe Checkout.
-   */
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
@@ -113,7 +100,6 @@ export default function FollowUpListScreen() {
           const { url } = await api.createCheckoutSession(
             PRICE_IDS[plan]
           );
-
           window.location.href = url;
         } catch (e) {
           console.warn('Checkout redirect failed', e);
@@ -191,20 +177,14 @@ export default function FollowUpListScreen() {
   };
 
   const openNewReminder = () => {
-    const next = new Date(
-      Date.now() + 60 * 60 * 1000
-    );
+    const next = new Date(Date.now() + 60 * 60 * 1000);
 
     setEditingReminderId(null);
     setReminderTitle('');
     setReminderEntity('');
     setReminderDate(next);
-    setWebReminderDate(
-      format(next, 'yyyy-MM-dd')
-    );
-    setWebReminderTime(
-      format(next, 'HH:mm')
-    );
+    setWebReminderDate(format(next, 'yyyy-MM-dd'));
+    setWebReminderTime(format(next, 'HH:mm'));
     setReminderOpen(true);
   };
 
@@ -215,16 +195,10 @@ export default function FollowUpListScreen() {
 
     setEditingReminderId(item.id);
     setReminderTitle(item.subject);
-    setReminderEntity(
-      item.entity || item.snippet || ''
-    );
+    setReminderEntity(item.entity || item.snippet || '');
     setReminderDate(next);
-    setWebReminderDate(
-      format(next, 'yyyy-MM-dd')
-    );
-    setWebReminderTime(
-      format(next, 'HH:mm')
-    );
+    setWebReminderDate(format(next, 'yyyy-MM-dd'));
+    setWebReminderTime(format(next, 'HH:mm'));
     setReminderOpen(true);
   };
 
@@ -286,10 +260,7 @@ export default function FollowUpListScreen() {
           dueDate
         );
 
-        setTasks((prev) => [
-          created,
-          ...prev,
-        ]);
+        setTasks((prev) => [created, ...prev]);
       }
 
       setReminderOpen(false);
@@ -326,9 +297,7 @@ export default function FollowUpListScreen() {
     };
 
     if (Platform.OS === 'web') {
-      if (
-        window.confirm('Delete this reminder?')
-      ) {
+      if (window.confirm('Delete this reminder?')) {
         await doDelete();
       }
     } else {
@@ -355,9 +324,8 @@ export default function FollowUpListScreen() {
       `Re: ${item.subject}`
     );
 
-    const quotedDate = new Date(
-      item.receivedAt
-    ).toLocaleString();
+    const quotedDate =
+      new Date(item.receivedAt).toLocaleString();
 
     const quotedFrom = item.fromName
       ? `${item.fromName} <${item.fromAddress}>`
@@ -369,12 +337,12 @@ export default function FollowUpListScreen() {
       `\n\nOn ${quotedDate}, ${quotedFrom} wrote:\n> ${quotedText}`;
 
     const url =
-      `mailto:${item.fromAddress}?subject=${subject}&body=${encodeURIComponent(body)}`;
+      `mailto:${item.fromAddress}?subject=${subject}&body=${encodeURIComponent(
+        body
+      )}`;
 
     Linking.openURL(url).catch(() => {
-      console.warn(
-        'Could not open mail client'
-      );
+      console.warn('Could not open mail client');
     });
   };
 
@@ -383,29 +351,21 @@ export default function FollowUpListScreen() {
       Platform.OS === 'web' &&
       originalImageUri?.startsWith('blob:')
     ) {
-      URL.revokeObjectURL(
-        originalImageUri
-      );
+      URL.revokeObjectURL(originalImageUri);
     }
 
     setOriginalImageOpen(false);
     setOriginalImageUri(null);
-    setOriginalImageTitle(
-      'Original Screenshot'
-    );
+    setOriginalImageTitle('Original Screenshot');
   };
 
-  const viewOriginal = async (
-    item: EmailTask
-  ) => {
+  const viewOriginal = async (item: EmailTask) => {
     if (item.hasOriginalImage) {
       setLoadingOriginal(item.id);
 
       try {
         const uri =
-          await api.getOriginalImage(
-            item.id
-          );
+          await api.getOriginalImage(item.id);
 
         setOriginalImageUri(uri);
 
@@ -430,9 +390,7 @@ export default function FollowUpListScreen() {
     }
 
     const forwarder =
-      (
-        item.forwarderAddress || ''
-      ).toLowerCase();
+      (item.forwarderAddress || '').toLowerCase();
 
     const query =
       `from:${item.fromAddress} subject:${item.subject}`;
@@ -442,7 +400,9 @@ export default function FollowUpListScreen() {
       forwarder.includes('@googlemail.com')
     ) {
       const url =
-        `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(query)}`;
+        `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(
+          query
+        )}`;
 
       Linking.openURL(url).catch(() =>
         replyToSender(item)
@@ -458,7 +418,9 @@ export default function FollowUpListScreen() {
       forwarder.includes('@msn.com')
     ) {
       const url =
-        `https://outlook.live.com/mail/0/search?q=${encodeURIComponent(query)}`;
+        `https://outlook.live.com/mail/0/search?q=${encodeURIComponent(
+          query
+        )}`;
 
       Linking.openURL(url).catch(() =>
         replyToSender(item)
@@ -479,9 +441,7 @@ export default function FollowUpListScreen() {
       await api.completeTask(item.id);
 
       setTasks((prev) =>
-        prev.filter(
-          (t) => t.id !== item.id
-        )
+        prev.filter((t) => t.id !== item.id)
       );
     } catch (e: any) {
       Alert.alert(
@@ -490,6 +450,14 @@ export default function FollowUpListScreen() {
       );
     } finally {
       setCompleting(null);
+    }
+  };
+
+  const openCard = (item: EmailTask) => {
+    if (item.sourceType === 'reminder') {
+      openEditReminder(item);
+    } else {
+      viewOriginal(item);
     }
   };
 
@@ -518,9 +486,7 @@ export default function FollowUpListScreen() {
             onPress={openNewReminder}
           >
             <Text
-              style={
-                styles.addTextButtonText
-              }
+              style={styles.addTextButtonText}
             >
               + Reminder
             </Text>
@@ -531,9 +497,7 @@ export default function FollowUpListScreen() {
             onPress={openAddText}
           >
             <Text
-              style={
-                styles.addTextButtonText
-              }
+              style={styles.addTextButtonText}
             >
               + Add Text
             </Text>
@@ -542,15 +506,11 @@ export default function FollowUpListScreen() {
           <TouchableOpacity
             style={styles.assignedButton}
             onPress={() =>
-              navigation.navigate(
-                'Assigned'
-              )
+              navigation.navigate('Assigned')
             }
           >
             <Text
-              style={
-                styles.assignedButtonText
-              }
+              style={styles.assignedButtonText}
             >
               Assigned →
             </Text>
@@ -573,119 +533,99 @@ export default function FollowUpListScreen() {
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text
-              style={styles.emptyTitle}
-            >
+            <Text style={styles.emptyTitle}>
               Nothing waiting on you
             </Text>
 
-            <Text
-              style={styles.emptyBody}
-            >
-              Forward an email, add a
-              text, or tap + Reminder to
-              create a standalone
-              reminder.
+            <Text style={styles.emptyBody}>
+              Forward an email, add a text, or
+              tap + Reminder to create a
+              standalone reminder.
             </Text>
           </View>
         }
         renderItem={({ item }) => {
           const overdue =
             !!item.dueDate &&
-            isPast(
-              new Date(item.dueDate)
-            );
+            isPast(new Date(item.dueDate));
 
           return (
-            <TouchableOpacity
-              style={styles.card}
-              onPress={() =>
-                item.sourceType ===
-                'reminder'
-                  ? openEditReminder(item)
-                  : viewOriginal(item)
-              }
-            >
-              <View
-                style={styles.sourceRow}
+            <View style={styles.card}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => openCard(item)}
               >
-                {item.sourceType ===
-                  'reminder' && (
-                  <View
-                    style={
-                      styles.reminderBadge
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.reminderBadgeText
-                      }
-                    >
-                      REMINDER
-                    </Text>
-                  </View>
-                )}
-
-                {item.sourceType ===
-                  'text' && (
-                  <View
-                    style={
-                      styles.textBadge
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.textBadgeText
-                      }
-                    >
-                      TEXT MESSAGE
-                    </Text>
-                  </View>
-                )}
-
-                <Text
-                  style={styles.from}
-                  numberOfLines={1}
-                >
+                <View style={styles.sourceRow}>
                   {item.sourceType ===
-                  'reminder'
-                    ? item.entity ||
-                      'Standalone reminder'
-                    : item.fromName ||
-                      item.fromAddress ||
-                      (item.sourceType ===
-                      'text'
-                        ? 'Copied text'
-                        : '')}
-                </Text>
-              </View>
+                    'reminder' && (
+                    <View
+                      style={
+                        styles.reminderBadge
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.reminderBadgeText
+                        }
+                      >
+                        REMINDER
+                      </Text>
+                    </View>
+                  )}
 
-              <Text
-                style={styles.subject}
-                numberOfLines={2}
-              >
-                {item.subject}
-              </Text>
+                  {item.sourceType ===
+                    'text' && (
+                    <View
+                      style={styles.textBadge}
+                    >
+                      <Text
+                        style={
+                          styles.textBadgeText
+                        }
+                      >
+                        TEXT MESSAGE
+                      </Text>
+                    </View>
+                  )}
 
-              {!!item.snippet &&
-                item.sourceType !==
-                  'reminder' && (
                   <Text
-                    style={
-                      styles.snippet
-                    }
+                    style={styles.from}
                     numberOfLines={1}
                   >
-                    {item.snippet}
+                    {item.sourceType ===
+                    'reminder'
+                      ? item.entity ||
+                        'Standalone reminder'
+                      : item.fromName ||
+                        item.fromAddress ||
+                        (item.sourceType ===
+                        'text'
+                          ? 'Copied text'
+                          : '')}
                   </Text>
-                )}
+                </View>
 
-              <View
-                style={styles.rowBottom}
-              >
                 <Text
-                  style={styles.time}
+                  style={styles.subject}
+                  numberOfLines={2}
                 >
+                  {item.subject}
+                </Text>
+
+                {!!item.snippet &&
+                  item.sourceType !==
+                    'reminder' && (
+                    <Text
+                      style={styles.snippet}
+                      numberOfLines={1}
+                    >
+                      {item.snippet}
+                    </Text>
+                  )}
+              </TouchableOpacity>
+
+              <View style={styles.rowBottom}>
+                <Text style={styles.time}>
                   {item.sourceType ===
                   'reminder'
                     ? 'created'
@@ -703,9 +643,7 @@ export default function FollowUpListScreen() {
                   )}
                 </Text>
 
-                <View
-                  style={styles.pillRow}
-                >
+                <View style={styles.pillRow}>
                   {!!item.dueDate && (
                     <View
                       style={[
@@ -741,14 +679,9 @@ export default function FollowUpListScreen() {
                         style={
                           styles.replyPill
                         }
-                        onPress={(
-                          event
-                        ) => {
-                          event.stopPropagation();
-                          viewOriginal(
-                            item
-                          );
-                        }}
+                        onPress={() =>
+                          viewOriginal(item)
+                        }
                       >
                         <Text
                           style={
@@ -764,20 +697,15 @@ export default function FollowUpListScreen() {
                     )}
 
                   <TouchableOpacity
-                    style={
-                      styles.assignPill
-                    }
-                    onPress={(event) => {
-                      event.stopPropagation();
-
+                    style={styles.assignPill}
+                    onPress={() =>
                       navigation.navigate(
                         'AssignTask',
                         {
-                          taskId:
-                            item.id,
+                          taskId: item.id,
                         }
-                      );
-                    }}
+                      )
+                    }
                   >
                     <Text
                       style={
@@ -793,30 +721,25 @@ export default function FollowUpListScreen() {
                       styles.completePill
                     }
                     disabled={
-                      completing ===
-                      item.id
+                      completing === item.id
                     }
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      handleComplete(
-                        item
-                      );
-                    }}
+                    onPress={() =>
+                      handleComplete(item)
+                    }
                   >
                     <Text
                       style={
                         styles.completePillText
                       }
                     >
-                      {completing ===
-                      item.id
+                      {completing === item.id
                         ? 'Marking…'
                         : 'Complete'}
                     </Text>
                   </TouchableOpacity>
                 </View>
               </View>
-            </TouchableOpacity>
+            </View>
           );
         }}
       />
@@ -835,9 +758,7 @@ export default function FollowUpListScreen() {
           }
         >
           <View
-            style={
-              styles.imageModalCard
-            }
+            style={styles.imageModalCard}
           >
             <View
               style={
@@ -859,9 +780,7 @@ export default function FollowUpListScreen() {
                 }
               >
                 <Text
-                  style={
-                    styles.closeText
-                  }
+                  style={styles.closeText}
                 >
                   Close
                 </Text>
@@ -870,9 +789,7 @@ export default function FollowUpListScreen() {
 
             {originalImageUri ? (
               <ScrollView
-                style={
-                  styles.imageScroll
-                }
+                style={styles.imageScroll}
                 contentContainerStyle={
                   styles.imageScrollContent
                 }
@@ -902,20 +819,14 @@ export default function FollowUpListScreen() {
           setReminderOpen(false)
         }
       >
-        <View
-          style={styles.modalBackdrop}
-        >
-          <View
-            style={styles.modalCard}
-          >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
             <View
               style={styles.modalHeader}
             >
               <View>
                 <Text
-                  style={
-                    styles.modalTitle
-                  }
+                  style={styles.modalTitle}
                 >
                   {editingReminderId
                     ? 'Edit Reminder'
@@ -938,25 +849,19 @@ export default function FollowUpListScreen() {
                 }
               >
                 <Text
-                  style={
-                    styles.closeText
-                  }
+                  style={styles.closeText}
                 >
                   Cancel
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <Text
-              style={styles.inputLabel}
-            >
+            <Text style={styles.inputLabel}>
               REMIND ME TO
             </Text>
 
             <TextInput
-              style={
-                styles.reminderInput
-              }
+              style={styles.reminderInput}
               value={reminderTitle}
               onChangeText={
                 setReminderTitle
@@ -967,17 +872,13 @@ export default function FollowUpListScreen() {
               }
             />
 
-            <Text
-              style={styles.inputLabel}
-            >
+            <Text style={styles.inputLabel}>
               PERSON / COMPANY / ENTITY
               (OPTIONAL)
             </Text>
 
             <TextInput
-              style={
-                styles.reminderInput
-              }
+              style={styles.reminderInput}
               value={reminderEntity}
               onChangeText={
                 setReminderEntity
@@ -988,26 +889,20 @@ export default function FollowUpListScreen() {
               }
             />
 
-            <Text
-              style={styles.inputLabel}
-            >
+            <Text style={styles.inputLabel}>
               DATE & TIME
             </Text>
 
             {Platform.OS === 'web' ? (
               <View
-                style={
-                  styles.webDateRow
-                }
+                style={styles.webDateRow}
               >
                 <TextInput
                   style={[
                     styles.reminderInput,
                     styles.webDateInput,
                   ]}
-                  value={
-                    webReminderDate
-                  }
+                  value={webReminderDate}
                   onChangeText={
                     setWebReminderDate
                   }
@@ -1019,9 +914,7 @@ export default function FollowUpListScreen() {
                     styles.reminderInput,
                     styles.webTimeInput,
                   ]}
-                  value={
-                    webReminderTime
-                  }
+                  value={webReminderTime}
                   onChangeText={
                     setWebReminderTime
                   }
@@ -1055,9 +948,7 @@ export default function FollowUpListScreen() {
             )}
 
             <View
-              style={
-                styles.modalActions
-              }
+              style={styles.modalActions}
             >
               <TouchableOpacity
                 style={[
@@ -1065,12 +956,8 @@ export default function FollowUpListScreen() {
                   savingReminder &&
                     styles.disabledButton,
                 ]}
-                disabled={
-                  savingReminder
-                }
-                onPress={
-                  saveReminder
-                }
+                disabled={savingReminder}
+                onPress={saveReminder}
               >
                 <Text
                   style={
@@ -1119,19 +1006,13 @@ export default function FollowUpListScreen() {
           setAddTextOpen(false)
         }
       >
-        <View
-          style={styles.modalBackdrop}
-        >
-          <View
-            style={styles.modalCard}
-          >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
             <ScrollView
               keyboardShouldPersistTaps="handled"
             >
               <View
-                style={
-                  styles.modalHeader
-                }
+                style={styles.modalHeader}
               >
                 <View>
                   <Text
@@ -1155,9 +1036,7 @@ export default function FollowUpListScreen() {
 
                 <TouchableOpacity
                   onPress={() =>
-                    setAddTextOpen(
-                      false
-                    )
+                    setAddTextOpen(false)
                   }
                 >
                   <Text
@@ -1171,9 +1050,7 @@ export default function FollowUpListScreen() {
               </View>
 
               <TouchableOpacity
-                style={
-                  styles.helpButton
-                }
+                style={styles.helpButton}
                 onPress={() =>
                   setTutorialOpen(true)
                 }
@@ -1189,17 +1066,13 @@ export default function FollowUpListScreen() {
               </TouchableOpacity>
 
               <Text
-                style={
-                  styles.inputLabel
-                }
+                style={styles.inputLabel}
               >
                 TEXT MESSAGE
               </Text>
 
               <TextInput
-                style={
-                  styles.textInput
-                }
+                style={styles.textInput}
                 value={textMessage}
                 onChangeText={
                   setTextMessage
@@ -1237,9 +1110,7 @@ export default function FollowUpListScreen() {
                     savingText &&
                       styles.disabledButton,
                   ]}
-                  disabled={
-                    savingText
-                  }
+                  disabled={savingText}
                   onPress={() =>
                     saveTextTask(false)
                   }
@@ -1261,9 +1132,7 @@ export default function FollowUpListScreen() {
                     savingText &&
                       styles.disabledButton,
                   ]}
-                  disabled={
-                    savingText
-                  }
+                  disabled={savingText}
                   onPress={() =>
                     saveTextTask(true)
                   }
@@ -1290,34 +1159,24 @@ export default function FollowUpListScreen() {
           setTutorialOpen(false)
         }
       >
-        <View
-          style={styles.modalBackdrop}
-        >
-          <View
-            style={styles.tutorialCard}
-          >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.tutorialCard}>
             <View
               style={styles.modalHeader}
             >
               <Text
-                style={
-                  styles.modalTitle
-                }
+                style={styles.modalTitle}
               >
                 How to Add a Text
               </Text>
 
               <TouchableOpacity
                 onPress={() =>
-                  setTutorialOpen(
-                    false
-                  )
+                  setTutorialOpen(false)
                 }
               >
                 <Text
-                  style={
-                    styles.closeText
-                  }
+                  style={styles.closeText}
                 >
                   Done
                 </Text>
@@ -1325,9 +1184,7 @@ export default function FollowUpListScreen() {
             </View>
 
             <View
-              style={
-                styles.platformTabs
-              }
+              style={styles.platformTabs}
             >
               <TouchableOpacity
                 style={[
@@ -1382,105 +1239,61 @@ export default function FollowUpListScreen() {
 
             {tutorialPlatform ===
             'iphone' ? (
-              <View
-                style={styles.steps}
-              >
-                <Text
-                  style={styles.step}
-                >
-                  1. Open Messages and
-                  open the text
-                  conversation you want
-                  to track.
+              <View style={styles.steps}>
+                <Text style={styles.step}>
+                  1. Open Messages and open
+                  the text conversation you
+                  want to track.
                 </Text>
-
-                <Text
-                  style={styles.step}
-                >
-                  2. Take a screenshot of
-                  the text message.
+                <Text style={styles.step}>
+                  2. Take a screenshot of the
+                  text message.
                 </Text>
-
-                <Text
-                  style={styles.step}
-                >
-                  3. Open the screenshot
-                  in Photos.
+                <Text style={styles.step}>
+                  3. Open the screenshot in
+                  Photos.
                 </Text>
-
-                <Text
-                  style={styles.step}
-                >
-                  4. Press and hold the
-                  text in the screenshot,
-                  then tap Copy.
+                <Text style={styles.step}>
+                  4. Press and hold the text
+                  in the screenshot, then tap
+                  Copy.
                 </Text>
-
-                <Text
-                  style={styles.step}
-                >
-                  5. Open MailPilotUs and
-                  tap + Add Text.
+                <Text style={styles.step}>
+                  5. Open MailPilotUs and tap
+                  + Add Text.
                 </Text>
-
-                <Text
-                  style={styles.step}
-                >
-                  6. Tap Paste Copied
-                  Text, then tap Add to
-                  Follow-Ups or Add &
-                  Assign.
+                <Text style={styles.step}>
+                  6. Tap Paste Copied Text,
+                  then tap Add to Follow-Ups
+                  or Add & Assign.
                 </Text>
               </View>
             ) : (
-              <View
-                style={styles.steps}
-              >
-                <Text
-                  style={styles.step}
-                >
+              <View style={styles.steps}>
+                <Text style={styles.step}>
                   1. Open your Android
                   messaging app.
                 </Text>
-
-                <Text
-                  style={styles.step}
-                >
-                  2. Press and hold the
-                  text message you want
-                  to track.
+                <Text style={styles.step}>
+                  2. Press and hold the text
+                  message you want to track.
                 </Text>
-
-                <Text
-                  style={styles.step}
-                >
+                <Text style={styles.step}>
                   3. Tap Copy. If your
-                  messaging app offers
-                  Share, you may still
-                  use Copy for this
-                  MailPilotUs feature.
+                  messaging app offers Share,
+                  you may still use Copy for
+                  this MailPilotUs feature.
                 </Text>
-
-                <Text
-                  style={styles.step}
-                >
-                  4. Open MailPilotUs and
-                  tap + Add Text.
+                <Text style={styles.step}>
+                  4. Open MailPilotUs and tap
+                  + Add Text.
                 </Text>
-
-                <Text
-                  style={styles.step}
-                >
-                  5. Tap Paste Copied
-                  Text.
+                <Text style={styles.step}>
+                  5. Tap Paste Copied Text.
                 </Text>
-
-                <Text
-                  style={styles.step}
-                >
-                  6. Tap Add to
-                  Follow-Ups or Add &
-                  Assign.
+                <Text style={styles.step}>
+                  6. Tap Add to Follow-Ups or
+                  Add & Assign.
                 </Text>
               </View>
             )}
@@ -1728,14 +1541,12 @@ const styles = StyleSheet.create({
 
   imageModalHeader: {
     flexDirection: 'row',
-    justifyContent:
-      'space-between',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor:
-      colors.line,
+    borderBottomColor: colors.line,
   },
 
   imageModalTitle: {
@@ -1789,8 +1600,7 @@ const styles = StyleSheet.create({
 
   modalHeader: {
     flexDirection: 'row',
-    justifyContent:
-      'space-between',
+    justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 16,
   },
