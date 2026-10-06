@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   View,
+  ScrollView,
   Text,
   TextInput,
   StyleSheet,
@@ -239,7 +240,11 @@ export default function AuthScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.scrollContainer}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+    >
       <Image
         source={require('../assets/mailpilotus-logo.png')}
         style={styles.logo}
@@ -388,7 +393,7 @@ export default function AuthScreen() {
           </Text>
         )}
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -396,6 +401,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.navy,
+    padding: 28,
+    justifyContent: 'center',
+  },
+
+  scrollContainer: {
+    flex: 1,
+    backgroundColor: colors.navy,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
     padding: 28,
     justifyContent: 'center',
   },
