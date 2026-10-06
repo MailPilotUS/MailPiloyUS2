@@ -21,6 +21,7 @@ import { formatDistanceToNow, format, isPast } from 'date-fns';
 import { EmailTask } from '../services/types';
 import { api } from '../services/api';
 import { colors } from '../theme';
+import { useSession } from '../contexts/SessionContext';
 import HomeScreenPrompt from './HomeScreenPrompt';
 import * as Clipboard from 'expo-clipboard';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -32,6 +33,18 @@ const PRICE_IDS: Record<string, string> = {
 
 export default function FollowUpListScreen() {
   const navigation = useNavigation<any>();
+  const { user } = useSession();
+
+const copyForwardingAddress = async () => {
+  if (!user?.forwardingAddress) return;
+
+  await Clipboard.setStringAsync(user.forwardingAddress);
+
+  Alert.alert(
+    'Copied',
+    'Your MailPilotUS forwarding address is on your clipboard.'
+  );
+};  
   const [tasks, setTasks] = useState<EmailTask[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [completing, setCompleting] = useState<string | null>(null);
@@ -518,7 +531,7 @@ export default function FollowUpListScreen() {
         </View>
       </View>
 
-      <FlatList
+            <FlatList
         data={tasks}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{
@@ -531,19 +544,99 @@ export default function FollowUpListScreen() {
             onRefresh={onRefresh}
           />
         }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>
-              Nothing waiting on you
+                ListEmptyComponent={
+          <View style={styles.onboarding}>
+            <Text style={styles.onboardingTitle}>
+              Welcome to MailPilotUS
             </Text>
 
-            <Text style={styles.emptyBody}>
-              Forward an email, add a text, or
-              tap + Reminder to create a
-              standalone reminder.
+            <Text style={styles.onboardingSubtitle}>
+              Start your first follow-up in seconds.
             </Text>
+
+            <View style={styles.onboardingStep}>
+              <Text style={styles.stepNumber}>1</Text>
+
+              <View style={styles.stepContent}>
+                <Text style={styles.stepTitle}>
+                  Forward an important email
+                </Text>
+
+                <Text style={styles.stepBody}>
+                  Forward any email you don't want to forget to your personal MailPilotUS address:
+                </Text>
+
+                {!!user?.forwardingAddress && (
+                  <TouchableOpacity
+                    style={styles.forwardingCard}
+                    onPress={copyForwardingAddress}
+                  >
+                    <Text style={styles.forwardingAddress}>
+                      {user.forwardingAddress}
+                    </Text>
+
+                    <Text style={styles.forwardingCopy}>
+                      Tap to copy
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.onboardingStep}>
+              <Text style={styles.stepNumber}>2</Text>
+
+              <View style={styles.stepContent}>
+                <Text style={styles.stepTitle}>
+                  It appears here automatically
+                </Text>
+
+                <Text style={styles.stepBody}>
+                  MailPilotUS turns the forwarded email into a follow-up you can track.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.onboardingStep}>
+              <Text style={styles.stepNumber}>3</Text>
+
+              <View style={styles.stepContent}>
+                <Text style={styles.stepTitle}>
+                  Stay in control
+                </Text>
+
+                <Text style={styles.stepBody}>
+                  Assign it, return to the original email, or mark it complete when you're finished.
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.otherWaysTitle}>
+              You can also:
+            </Text>
+
+            <View style={styles.onboardingButtons}>
+              <TouchableOpacity
+                style={styles.onboardingTextButton}
+                onPress={openAddText}
+              >
+                <Text style={styles.onboardingButtonText}>
+                  + Add Text
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.onboardingReminderButton}
+                onPress={openNewReminder}
+              >
+                <Text style={styles.onboardingButtonText}>
+                  + Reminder
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         }
+        
         renderItem={({ item }) => {
           const overdue =
             !!item.dueDate &&
@@ -1809,5 +1902,127 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 20,
+  },
+    onboarding: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 20,
+    padding: 22,
+    marginTop: 18,
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
+  },
+
+  onboardingTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.navy,
+    textAlign: 'center',
+  },
+
+  onboardingSubtitle: {
+    fontSize: 15,
+    color: colors.navyMuted,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 22,
+  },
+
+  onboardingStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+
+  stepNumber: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.blue,
+    color: '#fff',
+    textAlign: 'center',
+    lineHeight: 30,
+    fontSize: 14,
+    fontWeight: '800',
+    marginRight: 12,
+  },
+
+  stepContent: {
+    flex: 1,
+  },
+
+  stepTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.navy,
+  },
+
+  stepBody: {
+    fontSize: 13.5,
+    color: colors.navyMuted,
+    lineHeight: 19,
+    marginTop: 4,
+  },
+
+  forwardingCard: {
+    backgroundColor: colors.ice,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 10,
+  },
+
+  forwardingAddress: {
+    color: colors.blue,
+    fontSize: 15,
+    fontWeight: '800',
+    width: '100%',
+    textAlign: 'center',
+  },
+
+  forwardingCopy: {
+    color: colors.navyFaint,
+    fontSize: 11.5,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+
+  otherWaysTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.navyMuted,
+    textAlign: 'center',
+    marginTop: 2,
+    marginBottom: 10,
+  },
+
+  onboardingButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+
+  onboardingTextButton: {
+    backgroundColor: colors.blue,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 100,
+  },
+
+  onboardingReminderButton: {
+    backgroundColor: colors.navy,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 100,
+  },
+
+  onboardingButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
   },
 });
