@@ -223,6 +223,73 @@ export const api = {
   },
 
   /*
+   * Start Waiting for Reply tracking.
+   */
+  async waitForReply(
+    taskId: string,
+    replyDeadline: string
+  ): Promise<EmailTask> {
+    return request<EmailTask>(
+      `/v1/tasks/${taskId}/waiting-for-reply`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          replyDeadline,
+        }),
+      }
+    );
+  },
+
+  /*
+   * Stop Waiting for Reply tracking.
+   */
+  async cancelWaitingForReply(
+    taskId: string
+  ): Promise<EmailTask> {
+    return request<EmailTask>(
+      `/v1/tasks/${taskId}/cancel-waiting-for-reply`,
+      {
+        method: 'POST',
+      }
+    );
+  },
+
+  /*
+   * Manually mark a reply as received.
+   */
+  async markReplyReceived(
+    taskId: string
+  ): Promise<EmailTask> {
+    return request<EmailTask>(
+      `/v1/tasks/${taskId}/reply-received`,
+      {
+        method: 'POST',
+      }
+    );
+  },
+
+  /*
+   * Ask the backend to check the connected Gmail
+   * account for replies to Waiting-for-Reply tasks.
+   */
+  async checkGmailReplies(): Promise<{
+    checked: number;
+    repliesFound: number;
+    tasks: EmailTask[];
+  }> {
+    return request<{
+      checked: number;
+      repliesFound: number;
+      tasks: EmailTask[];
+    }>(
+      '/v1/gmail-replies/check',
+      {
+        method: 'POST',
+      }
+    );
+  },
+
+  /*
    * Retrieves the original screenshot attached
    * to a forwarded Follow-Up.
    *
