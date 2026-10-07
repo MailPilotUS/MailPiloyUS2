@@ -77,6 +77,2325 @@ const copyForwardingAddress = async () => {
   const [loadingOriginal, setLoadingOriginal] =
     useState<string | null>(null);
 
+  const [waitingTask, setWaitingTask] =
+    useState<EmailTask | null>(null);
+  const [savingWaiting, setSavingWaiting] = useState(false);
+  const [customReplyDate, setCustomReplyDate] = useState<Date>(
+    () => new Date(Date.now() + 24 * 60 * 60 * 1000)
+  );
+  const [webReplyDate, setWebReplyDate] = useState(() =>
+    format(new Date(Date.now() + 24 * 60 * 60 * 1000), 'yyyy-MM-dd')
+  );
+  const [webReplyTime, setWebReplyTime] = useState(() =>
+    format(new Date(Date.now() + 24 * 60 * 60 * 1000), 'HH:mm')
+  );
+
+  const appState = useRef<AppStateStatus>(AppState.currentState);
+
+  const load = useCallback(async () => {
+    try {
+      await api.checkGmailReplies();
+    } catch (e) {
+      console.warn('Gmail reply check skipped', e);
+    }
+
+    const data = await api.listFollowUp();
+    setTasks(data);
+  }, []);
+
+  useEffect(() => {
+    load();
+
+    const sub = AppState.addEventListener('change', (next) => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        next === 'active'
+      ) {
+        load();
+      }
+
+      appState.current = next;
+    });
+
+    return () => sub.remove();
+  }, [load]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const params = new URLSearchParams(window.location.search);
+    const plan = params.get('plan');
+
+    if (plan && PRICE_IDS[plan]) {
+      (async () => {
+        try {
+          const { url } = await api.createCheckoutSession(
+            PRICE_IDS[plan]
+          );
+          window.location.href = url;
+        } catch (e) {
+          console.warn('Checkout redirect failed', e);
+        }
+      })();
+    }
+  }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
+
+  const openAddText = async () => {
+    try {
+      const clipboardText = await Clipboard.getStringAsync();
+      setTextMessage(clipboardText || '');
+    } catch {
+      setTextMessage('');
+    }
+
+    setAddTextOpen(true);
+  };
+
+  const pasteText = async () => {
+    try {
+      const clipboardText = await Clipboard.getStringAsync();
+      setTextMessage(clipboardText || '');
+    } catch {
+      Alert.alert(
+        'Paste unavailable',
+        'Please tap in the box and paste the copied text manually.'
+      );
+    }
+  };
+
+  const saveTextTask = async (assignAfterCreate = false) => {
+    const text = textMessage.trim();
+
+    if (!text) {
+      Alert.alert(
+        'No text copied',
+        'Copy a text message first, then paste it here.'
+      );
+      return;
+    }
+
+    setSavingText(true);
+
+    try {
+      const created = await api.createTextTask(text);
+
+      setTasks((prev) => [
+        { ...created, sourceType: 'text' },
+        ...prev,
+      ]);
+
+      setAddTextOpen(false);
+      setTextMessage('');
+
+      if (assignAfterCreate) {
+        navigation.navigate('AssignTask', {
+          taskId: created.id,
+        });
+      }
+    } catch (e: any) {
+      Alert.alert(
+        'Text follow-up is not enabled on the server yet',
+        'The app screen is ready, but the MailPilotUs server must add the text-message endpoint before this can be saved. No email features were changed.'
+      );
+    } finally {
+      setSavingText(false);
+    }
+  };
+
+  const openNewReminder = () => {
+    const next = new Date(Date.now() + 60 * 60 * 1000);
+
+    setEditingReminderId(null);
+    setReminderTitle('');
+    setReminderEntity('');
+    setReminderDate(next);
+    setWebReminderDate(format(next, 'yyyy-MM-dd'));
+    setWebReminderTime(format(next, 'HH:mm'));
+    setReminderOpen(true);
+  };
+
+  const openEditReminder = (item: EmailTask) => {
+    const next = item.dueDate
+      ? new Date(item.dueDate)
+      : new Date(Date.now() + 60 * 60 * 1000);
+
+    setEditingReminderId(item.id);
+    setReminderTitle(item.subject);
+    setReminderEntity(item.entity || item.snippet || '');
+    setReminderDate(next);
+    setWebReminderDate(format(next, 'yyyy-MM-dd'));
+    setWebReminderTime(format(next, 'HH:mm'));
+    setReminderOpen(true);
+  };
+
+  const getReminderDueDate = (): string | null => {
+    if (Platform.OS !== 'web') {
+      return reminderDate.toISOString();
+    }
+
+    const candidate = new Date(
+      `${webReminderDate}T${webReminderTime}:00`
+    );
+
+    return Number.isNaN(candidate.getTime())
+      ? null
+      : candidate.toISOString();
+  };
+
+  const saveReminder = async () => {
+    const title = reminderTitle.trim();
+
+    if (!title) {
+      Alert.alert(
+        'Reminder needed',
+        'Enter what you want to be reminded about.'
+      );
+      return;
+    }
+
+    const dueDate = getReminderDueDate();
+
+    if (!dueDate) {
+      Alert.alert(
+        'Date and time needed',
+        'Enter a valid reminder date and time.'
+      );
+      return;
+    }
+
+    setSavingReminder(true);
+
+    try {
+      if (editingReminderId) {
+        const updated = await api.updateReminder(
+          editingReminderId,
+          title,
+          reminderEntity.trim(),
+          dueDate
+        );
+
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === updated.id ? updated : t
+          )
+        );
+      } else {
+        const created = await api.createReminder(
+          title,
+          reminderEntity.trim(),
+          dueDate
+        );
+
+        setTasks((prev) => [created, ...prev]);
+      }
+
+      setReminderOpen(false);
+    } catch (e: any) {
+      Alert.alert(
+        'Could not save reminder',
+        e.message
+      );
+    } finally {
+      setSavingReminder(false);
+    }
+  };
+
+  const deleteReminder = async () => {
+    if (!editingReminderId) return;
+
+    const id = editingReminderId;
+
+    const doDelete = async () => {
+      try {
+        await api.deleteTask(id);
+
+        setTasks((prev) =>
+          prev.filter((t) => t.id !== id)
+        );
+
+        setReminderOpen(false);
+      } catch (e: any) {
+        Alert.alert(
+          'Could not delete reminder',
+          e.message
+        );
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Delete this reminder?')) {
+        await doDelete();
+      }
+    } else {
+      Alert.alert(
+        'Delete reminder?',
+        'This cannot be undone.',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: doDelete,
+          },
+        ]
+      );
+    }
+  };
+
+  const replyToSender = (item: EmailTask) => {
+    const subject = encodeURIComponent(
+      `Re: ${item.subject}`
+    );
+
+    const quotedDate =
+      new Date(item.receivedAt).toLocaleString();
+
+    const quotedFrom = item.fromName
+      ? `${item.fromName} <${item.fromAddress}>`
+      : item.fromAddress;
+
+    const quotedText = item.snippet || '';
+
+    const body =
+      `\n\nOn ${quotedDate}, ${quotedFrom} wrote:\n> ${quotedText}`;
+
+    const url =
+      `mailto:${item.fromAddress}?subject=${subject}&body=${encodeURIComponent(
+        body
+      )}`;
+
+    Linking.openURL(url).catch(() => {
+      console.warn('Could not open mail client');
+    });
+  };
+
+  const closeOriginalImage = () => {
+    if (
+      Platform.OS === 'web' &&
+      originalImageUri?.startsWith('blob:')
+    ) {
+      URL.revokeObjectURL(originalImageUri);
+    }
+
+    setOriginalImageOpen(false);
+    setOriginalImageUri(null);
+    setOriginalImageTitle('Original Screenshot');
+  };
+
+  const viewOriginal = async (item: EmailTask) => {
+    if (item.hasOriginalImage) {
+      setLoadingOriginal(item.id);
+
+      try {
+        const uri =
+          await api.getOriginalImage(item.id);
+
+        setOriginalImageUri(uri);
+
+        setOriginalImageTitle(
+          item.originalImageName ||
+            item.subject ||
+            'Original Screenshot'
+        );
+
+        setOriginalImageOpen(true);
+      } catch (e: any) {
+        Alert.alert(
+          'Could not open screenshot',
+          e?.message ||
+            'The original screenshot could not be loaded.'
+        );
+      } finally {
+        setLoadingOriginal(null);
+      }
+
+      return;
+    }
+
+    const forwarder =
+      (item.forwarderAddress || '').toLowerCase();
+
+    const query =
+      `from:${item.fromAddress} subject:${item.subject}`;
+
+    if (
+      forwarder.includes('@gmail.com') ||
+      forwarder.includes('@googlemail.com')
+    ) {
+      const url =
+        `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(
+          query
+        )}`;
+
+      Linking.openURL(url).catch(() =>
+        replyToSender(item)
+      );
+
+      return;
+    }
+
+    if (
+      forwarder.includes('@outlook.com') ||
+      forwarder.includes('@hotmail.com') ||
+      forwarder.includes('@live.com') ||
+      forwarder.includes('@msn.com')
+    ) {
+      const url =
+        `https://outlook.live.com/mail/0/search?q=${encodeURIComponent(
+          query
+        )}`;
+
+      Linking.openURL(url).catch(() =>
+        replyToSender(item)
+      );
+
+      return;
+    }
+
+    replyToSender(item);
+  };
+
+  const handleComplete = async (
+    item: EmailTask
+  ) => {
+    setCompleting(item.id);
+
+    try {
+      await api.completeTask(item.id);
+
+      setTasks((prev) =>
+        prev.filter((t) => t.id !== item.id)
+      );
+    } catch (e: any) {
+      Alert.alert(
+        'Could not mark complete',
+        e.message
+      );
+    } finally {
+      setCompleting(null);
+    }
+  };
+
+  const openWaitingForReply = (item: EmailTask) => {
+    const next = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    setWaitingTask(item);
+    setCustomReplyDate(next);
+    setWebReplyDate(format(next, 'yyyy-MM-dd'));
+    setWebReplyTime(format(next, 'HH:mm'));
+  };
+
+  const saveWaitingForReply = async (deadline: Date) => {
+    if (!waitingTask) return;
+
+    if (Number.isNaN(deadline.getTime()) || deadline.getTime() <= Date.now()) {
+      Alert.alert('Future date needed', 'Choose a deadline that is later than now.');
+      return;
+    }
+
+    setSavingWaiting(true);
+    try {
+      const updated = await api.waitForReply(waitingTask.id, deadline.toISOString());
+      setTasks((prev) =>
+        prev.map((task) => task.id === updated.id ? updated : task)
+      );
+      setWaitingTask(null);
+    } catch (e: any) {
+      Alert.alert(
+        'Could not start Waiting for Reply',
+        e?.message || 'Please try again.'
+      );
+    } finally {
+      setSavingWaiting(false);
+    }
+  };
+
+  const chooseReplyDeadline = async (
+    choice: 'tomorrow' | '3days' | '1week'
+  ) => {
+    const deadline = new Date();
+
+    if (choice === 'tomorrow') {
+      deadline.setDate(deadline.getDate() + 1);
+    } else if (choice === '3days') {
+      deadline.setDate(deadline.getDate() + 3);
+    } else {
+      deadline.setDate(deadline.getDate() + 7);
+    }
+
+    await saveWaitingForReply(deadline);
+  };
+
+  const saveCustomReplyDeadline = async () => {
+    if (Platform.OS !== 'web') {
+      await saveWaitingForReply(customReplyDate);
+      return;
+    }
+
+    const deadline = new Date(`${webReplyDate}T${webReplyTime}:00`);
+    await saveWaitingForReply(deadline);
+  };
+
+  const cancelWaitingForReply = async (item: EmailTask) => {
+    try {
+      const updated = await api.cancelWaitingForReply(item.id);
+      setTasks((prev) =>
+        prev.map((task) => task.id === updated.id ? updated : task)
+      );
+    } catch (e: any) {
+      Alert.alert(
+        'Could not cancel Waiting for Reply',
+        e?.message || 'Please try again.'
+      );
+    }
+  };
+
+  const openCard = (item: EmailTask) => {
+    if (item.sourceType === 'reminder') {
+      openEditReminder(item);
+    } else {
+      viewOriginal(item);
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <HomeScreenPrompt />
+
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.title}>
+            Follow-Up
+          </Text>
+
+          <Text style={styles.subtitle}>
+            {tasks.length}{' '}
+            {tasks.length === 1
+              ? 'item'
+              : 'items'}{' '}
+            waiting
+          </Text>
+        </View>
+
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.reminderButton}
+            onPress={openNewReminder}
+          >
+            <Text
+              style={styles.addTextButtonText}
+            >
+              + Reminder
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.addTextButton}
+            onPress={openAddText}
+          >
+            <Text
+              style={styles.addTextButtonText}
+            >
+              + Add Text
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.assignedButton}
+            onPress={() =>
+              navigation.navigate('Assigned')
+            }
+          >
+            <Text
+              style={styles.assignedButtonText}
+            >
+              Assigned →
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+            <FlatList
+        data={tasks}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{
+          padding: 16,
+          paddingTop: 4,
+        }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+          />
+        }
+                ListEmptyComponent={
+          <View style={styles.onboarding}>
+            <Text style={styles.onboardingTitle}>
+              Welcome to MailPilotUS
+            </Text>
+
+            <Text style={styles.onboardingSubtitle}>
+              Start your first follow-up in seconds.
+            </Text>
+
+            <View style={styles.onboardingStep}>
+              <Text style={styles.stepNumber}>1</Text>
+
+              <View style={styles.stepContent}>
+                <Text style={styles.stepTitle}>
+                  Forward an important email
+                </Text>
+
+                <Text style={styles.stepBody}>
+                  Forward any email you don't want to forget to your personal MailPilotUS address:
+                </Text>
+
+                {!!user?.forwardingAddress && (
+                  <TouchableOpacity
+                    style={styles.forwardingCard}
+                    onPress={copyForwardingAddress}
+                  >
+                    <Text style={styles.forwardingAddress}>
+                      {user.forwardingAddress}
+                    </Text>
+
+                    <Text style={styles.forwardingCopy}>
+                      Tap to copy
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.onboardingStep}>
+              <Text style={styles.stepNumber}>2</Text>
+
+              <View style={styles.stepContent}>
+                <Text style={styles.stepTitle}>
+                  It appears here automatically
+                </Text>
+
+                <Text style={styles.stepBody}>
+                  MailPilotUS turns the forwarded email into a follow-up you can track.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.onboardingStep}>
+              <Text style={styles.stepNumber}>3</Text>
+
+              <View style={styles.stepContent}>
+                <Text style={styles.stepTitle}>
+                  Stay in control
+                </Text>
+
+                <Text style={styles.stepBody}>
+                  Assign it, return to the original email, or mark it complete when you're finished.
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.otherWaysTitle}>
+              You can also:
+            </Text>
+
+            <View style={styles.onboardingButtons}>
+              <TouchableOpacity
+                style={styles.onboardingTextButton}
+                onPress={openAddText}
+              >
+                <Text style={styles.onboardingButtonText}>
+                  + Add Text
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.onboardingReminderButton}
+                onPress={openNewReminder}
+              >
+                <Text style={styles.onboardingButtonText}>
+                  + Reminder
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        }
+        
+        renderItem={({ item }) => {
+          const overdue =
+            !!item.dueDate &&
+            isPast(new Date(item.dueDate));
+
+          return (
+            <View style={styles.card}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => openCard(item)}
+              >
+                <View style={styles.sourceRow}>
+                  {item.sourceType ===
+                    'reminder' && (
+                    <View
+                      style={
+                        styles.reminderBadge
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.reminderBadgeText
+                        }
+                      >
+                        REMINDER
+                      </Text>
+                    </View>
+                  )}
+
+                  {item.sourceType ===
+                    'text' && (
+                    <View
+                      style={styles.textBadge}
+                    >
+                      <Text
+                        style={
+                          styles.textBadgeText
+                        }
+                      >
+                        TEXT MESSAGE
+                      </Text>
+                    </View>
+                  )}
+
+                  {!!item.replyReceivedAt && (
+                    <View style={styles.replyReceivedBadge}>
+                      <Text style={styles.replyReceivedBadgeText}>
+                        REPLY RECEIVED
+                      </Text>
+                    </View>
+                  )}
+
+                  {item.noReply && (
+                    <View style={styles.noReplyBadge}>
+                      <Text style={styles.noReplyBadgeText}>
+                        NO REPLY — FOLLOW UP NOW
+                      </Text>
+                    </View>
+                  )}
+
+                  {item.waitingForReply && !item.noReply && (
+                    <View style={styles.waitingBadge}>
+                      <Text style={styles.waitingBadgeText}>
+                        WAITING FOR REPLY
+                      </Text>
+                    </View>
+                  )}
+
+                  <Text
+                    style={styles.from}
+                    numberOfLines={1}
+                  >
+                    {item.sourceType ===
+                    'reminder'
+                      ? item.entity ||
+                        'Standalone reminder'
+                      : item.fromName ||
+                        item.fromAddress ||
+                        (item.sourceType ===
+                        'text'
+                          ? 'Copied text'
+                          : '')}
+                  </Text>
+                </View>
+
+                <Text
+                  style={styles.subject}
+                  numberOfLines={2}
+                >
+                  {item.subject}
+                </Text>
+
+                {!!item.snippet &&
+                  item.sourceType !==
+                    'reminder' && (
+                    <Text
+                      style={styles.snippet}
+                      numberOfLines={1}
+                    >
+                      {item.snippet}
+                    </Text>
+                  )}
+              </TouchableOpacity>
+
+              <View style={styles.rowBottom}>
+                <Text style={styles.time}>
+                  {item.sourceType ===
+                  'reminder'
+                    ? 'created'
+                    : item.sourceType ===
+                      'text'
+                    ? 'added'
+                    : 'forwarded'}{' '}
+                  {formatDistanceToNow(
+                    new Date(
+                      item.receivedAt
+                    ),
+                    {
+                      addSuffix: true,
+                    }
+                  )}
+                </Text>
+
+                <View style={styles.pillRow}>
+                  {!!item.dueDate && (
+                    <View
+                      style={[
+                        styles.duePill,
+                        overdue &&
+                          styles.dueOverduePill,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.duePillText,
+                          overdue &&
+                            styles.dueOverduePillText,
+                        ]}
+                      >
+                        {overdue
+                          ? 'Overdue'
+                          : `Due ${format(
+                              new Date(
+                                item.dueDate
+                              ),
+                              'MMM d'
+                            )}`}
+                      </Text>
+                    </View>
+                  )}
+
+                  {item.sourceType !==
+                    'text' &&
+                    item.sourceType !==
+                      'reminder' && (
+                      <TouchableOpacity
+                        style={
+                          styles.replyPill
+                        }
+                        onPress={() =>
+                          viewOriginal(item)
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.replyPillText
+                          }
+                        >
+                          {loadingOriginal ===
+                          item.id
+                            ? 'Opening…'
+                            : 'View Original'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                  {item.sourceType !== 'text' &&
+                    item.sourceType !== 'reminder' &&
+                    !item.replyReceivedAt && (
+                      <TouchableOpacity
+                        style={[
+                          styles.waitingPill,
+                          item.noReply && styles.noReplyPill,
+                        ]}
+                        onPress={() =>
+                          item.waitingForReply
+                            ? cancelWaitingForReply(item)
+                            : openWaitingForReply(item)
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.waitingPillText,
+                            item.noReply && styles.noReplyPillText,
+                          ]}
+                        >
+                          {item.noReply
+                            ? 'Follow Up Now'
+                            : item.waitingForReply
+                            ? 'Cancel Waiting'
+                            : 'Waiting for Reply'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                  <TouchableOpacity
+                    style={styles.assignPill}
+                    onPress={() =>
+                      navigation.navigate(
+                        'AssignTask',
+                        {
+                          taskId: item.id,
+                        }
+                      )
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.assignPillText
+                      }
+                    >
+                      Assign
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={
+                      styles.completePill
+                    }
+                    disabled={
+                      completing === item.id
+                    }
+                    onPress={() =>
+                      handleComplete(item)
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.completePillText
+                      }
+                    >
+                      {completing === item.id
+                        ? 'Marking…'
+                        : 'Complete'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          );
+        }}
+      />
+
+      <Modal
+        visible={!!waitingTask}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setWaitingTask(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Waiting for Reply</Text>
+                <Text style={styles.modalSubtitle}>
+                  When should MailPilotUS remind you if no reply arrives?
+                </Text>
+              </View>
+
+              <TouchableOpacity onPress={() => setWaitingTask(null)}>
+                <Text style={styles.closeText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.replyChoiceRow}>
+              <TouchableOpacity
+                style={styles.replyChoiceButton}
+                disabled={savingWaiting}
+                onPress={() => chooseReplyDeadline('tomorrow')}
+              >
+                <Text style={styles.replyChoiceButtonText}>Tomorrow</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.replyChoiceButton}
+                disabled={savingWaiting}
+                onPress={() => chooseReplyDeadline('3days')}
+              >
+                <Text style={styles.replyChoiceButtonText}>3 Days</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.replyChoiceButton}
+                disabled={savingWaiting}
+                onPress={() => chooseReplyDeadline('1week')}
+              >
+                <Text style={styles.replyChoiceButtonText}>1 Week</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.inputLabel}>CUSTOM DATE & TIME</Text>
+
+            {Platform.OS === 'web' ? (
+              <View style={styles.webDateRow}>
+                <TextInput
+                  style={[styles.reminderInput, styles.webDateInput]}
+                  value={webReplyDate}
+                  onChangeText={setWebReplyDate}
+                  placeholder="YYYY-MM-DD"
+                />
+                <TextInput
+                  style={[styles.reminderInput, styles.webTimeInput]}
+                  value={webReplyTime}
+                  onChangeText={setWebReplyTime}
+                  placeholder="HH:MM"
+                />
+              </View>
+            ) : (
+              <View style={styles.nativePickerRow}>
+                <DateTimePicker
+                  value={customReplyDate}
+                  mode="date"
+                  onChange={(_, d) => d && setCustomReplyDate(d)}
+                />
+                <DateTimePicker
+                  value={customReplyDate}
+                  mode="time"
+                  onChange={(_, d) => d && setCustomReplyDate(d)}
+                />
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[
+                styles.saveButton,
+                styles.customReplySaveButton,
+                savingWaiting && styles.disabledButton,
+              ]}
+              disabled={savingWaiting}
+              onPress={saveCustomReplyDeadline}
+            >
+              <Text style={styles.saveButtonText}>
+                {savingWaiting ? 'Saving…' : 'Use Custom Deadline'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={originalImageOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={
+          closeOriginalImage
+        }
+      >
+        <View
+          style={
+            styles.imageModalBackdrop
+          }
+        >
+          <View
+            style={styles.imageModalCard}
+          >
+            <View
+              style={
+                styles.imageModalHeader
+              }
+            >
+              <Text
+                style={
+                  styles.imageModalTitle
+                }
+                numberOfLines={1}
+              >
+                {originalImageTitle}
+              </Text>
+
+              <TouchableOpacity
+                onPress={
+                  closeOriginalImage
+                }
+              >
+                <Text
+                  style={styles.closeText}
+                >
+                  Close
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {originalImageUri ? (
+              <ScrollView
+                style={styles.imageScroll}
+                contentContainerStyle={
+                  styles.imageScrollContent
+                }
+                maximumZoomScale={5}
+                minimumZoomScale={1}
+              >
+                <Image
+                  source={{
+                    uri: originalImageUri,
+                  }}
+                  style={
+                    styles.originalImage
+                  }
+                  resizeMode="contain"
+                />
+              </ScrollView>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={reminderOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() =>
+          setReminderOpen(false)
+        }
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View
+              style={styles.modalHeader}
+            >
+              <View>
+                <Text
+                  style={styles.modalTitle}
+                >
+                  {editingReminderId
+                    ? 'Edit Reminder'
+                    : 'New Reminder'}
+                </Text>
+
+                <Text
+                  style={
+                    styles.modalSubtitle
+                  }
+                >
+                  No email or text is
+                  required.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() =>
+                  setReminderOpen(false)
+                }
+              >
+                <Text
+                  style={styles.closeText}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.inputLabel}>
+              REMIND ME TO
+            </Text>
+
+            <TextInput
+              style={styles.reminderInput}
+              value={reminderTitle}
+              onChangeText={
+                setReminderTitle
+              }
+              placeholder="Call John about the quote"
+              placeholderTextColor={
+                colors.navyFaint
+              }
+            />
+
+            <Text style={styles.inputLabel}>
+              PERSON / COMPANY / ENTITY
+              (OPTIONAL)
+            </Text>
+
+            <TextInput
+              style={styles.reminderInput}
+              value={reminderEntity}
+              onChangeText={
+                setReminderEntity
+              }
+              placeholder="ABC Company"
+              placeholderTextColor={
+                colors.navyFaint
+              }
+            />
+
+            <Text style={styles.inputLabel}>
+              DATE & TIME
+            </Text>
+
+            {Platform.OS === 'web' ? (
+              <View
+                style={styles.webDateRow}
+              >
+                <TextInput
+                  style={[
+                    styles.reminderInput,
+                    styles.webDateInput,
+                  ]}
+                  value={webReminderDate}
+                  onChangeText={
+                    setWebReminderDate
+                  }
+                  placeholder="YYYY-MM-DD"
+                />
+
+                <TextInput
+                  style={[
+                    styles.reminderInput,
+                    styles.webTimeInput,
+                  ]}
+                  value={webReminderTime}
+                  onChangeText={
+                    setWebReminderTime
+                  }
+                  placeholder="HH:MM"
+                />
+              </View>
+            ) : (
+              <View
+                style={
+                  styles.nativePickerRow
+                }
+              >
+                <DateTimePicker
+                  value={reminderDate}
+                  mode="date"
+                  onChange={(_, d) =>
+                    d &&
+                    setReminderDate(d)
+                  }
+                />
+
+                <DateTimePicker
+                  value={reminderDate}
+                  mode="time"
+                  onChange={(_, d) =>
+                    d &&
+                    setReminderDate(d)
+                  }
+                />
+              </View>
+            )}
+
+            <View
+              style={styles.modalActions}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.saveButton,
+                  savingReminder &&
+                    styles.disabledButton,
+                ]}
+                disabled={savingReminder}
+                onPress={saveReminder}
+              >
+                <Text
+                  style={
+                    styles.saveButtonText
+                  }
+                >
+                  {savingReminder
+                    ? 'Saving…'
+                    : editingReminderId
+                    ? 'Save Changes'
+                    : 'Save Reminder'}
+                </Text>
+              </TouchableOpacity>
+
+              {editingReminderId && (
+                <TouchableOpacity
+                  style={
+                    styles.deleteButton
+                  }
+                  disabled={
+                    savingReminder
+                  }
+                  onPress={
+                    deleteReminder
+                  }
+                >
+                  <Text
+                    style={
+                      styles.deleteButtonText
+                    }
+                  >
+                    Delete
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={addTextOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() =>
+          setAddTextOpen(false)
+        }
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+            >
+              <View
+                style={styles.modalHeader}
+              >
+                <View>
+                  <Text
+                    style={
+                      styles.modalTitle
+                    }
+                  >
+                    Add a Text
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.modalSubtitle
+                    }
+                  >
+                    Turn a copied text
+                    message into a
+                    follow-up.
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() =>
+                    setAddTextOpen(false)
+                  }
+                >
+                  <Text
+                    style={
+                      styles.closeText
+                    }
+                  >
+                    Close
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={styles.helpButton}
+                onPress={() =>
+                  setTutorialOpen(true)
+                }
+              >
+                <Text
+                  style={
+                    styles.helpButtonText
+                  }
+                >
+                  ? How to copy a text on
+                  iPhone or Android
+                </Text>
+              </TouchableOpacity>
+
+              <Text
+                style={styles.inputLabel}
+              >
+                TEXT MESSAGE
+              </Text>
+
+              <TextInput
+                style={styles.textInput}
+                value={textMessage}
+                onChangeText={
+                  setTextMessage
+                }
+                multiline
+                placeholder="Your copied text message will appear here."
+                placeholderTextColor={
+                  colors.navyFaint
+                }
+              />
+
+              <TouchableOpacity
+                style={
+                  styles.pasteButton
+                }
+                onPress={pasteText}
+              >
+                <Text
+                  style={
+                    styles.pasteButtonText
+                  }
+                >
+                  Paste Copied Text
+                </Text>
+              </TouchableOpacity>
+
+              <View
+                style={
+                  styles.modalActions
+                }
+              >
+                <TouchableOpacity
+                  style={[
+                    styles.saveButton,
+                    savingText &&
+                      styles.disabledButton,
+                  ]}
+                  disabled={savingText}
+                  onPress={() =>
+                    saveTextTask(false)
+                  }
+                >
+                  <Text
+                    style={
+                      styles.saveButtonText
+                    }
+                  >
+                    {savingText
+                      ? 'Saving…'
+                      : 'Add to Follow-Ups'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.assignTextButton,
+                    savingText &&
+                      styles.disabledButton,
+                  ]}
+                  disabled={savingText}
+                  onPress={() =>
+                    saveTextTask(true)
+                  }
+                >
+                  <Text
+                    style={
+                      styles.assignTextButtonText
+                    }
+                  >
+                    Add & Assign
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={tutorialOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() =>
+          setTutorialOpen(false)
+        }
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.tutorialCard}>
+            <View
+              style={styles.modalHeader}
+            >
+              <Text
+                style={styles.modalTitle}
+              >
+                How to Add a Text
+              </Text>
+
+              <TouchableOpacity
+                onPress={() =>
+                  setTutorialOpen(false)
+                }
+              >
+                <Text
+                  style={styles.closeText}
+                >
+                  Done
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View
+              style={styles.platformTabs}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.platformTab,
+                  tutorialPlatform ===
+                    'iphone' &&
+                    styles.platformTabActive,
+                ]}
+                onPress={() =>
+                  setTutorialPlatform(
+                    'iphone'
+                  )
+                }
+              >
+                <Text
+                  style={[
+                    styles.platformTabText,
+                    tutorialPlatform ===
+                      'iphone' &&
+                      styles.platformTabTextActive,
+                  ]}
+                >
+                  iPhone
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.platformTab,
+                  tutorialPlatform ===
+                    'android' &&
+                    styles.platformTabActive,
+                ]}
+                onPress={() =>
+                  setTutorialPlatform(
+                    'android'
+                  )
+                }
+              >
+                <Text
+                  style={[
+                    styles.platformTabText,
+                    tutorialPlatform ===
+                      'android' &&
+                      styles.platformTabTextActive,
+                  ]}
+                >
+                  Android
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {tutorialPlatform ===
+            'iphone' ? (
+              <View style={styles.steps}>
+                <Text style={styles.step}>
+                  1. Open Messages and open
+                  the text conversation you
+                  want to track.
+                </Text>
+                <Text style={styles.step}>
+                  2. Take a screenshot of the
+                  text message.
+                </Text>
+                <Text style={styles.step}>
+                  3. Open the screenshot in
+                  Photos.
+                </Text>
+                <Text style={styles.step}>
+                  4. Press and hold the text
+                  in the screenshot, then tap
+                  Copy.
+                </Text>
+                <Text style={styles.step}>
+                  5. Open MailPilotUs and tap
+                  + Add Text.
+                </Text>
+                <Text style={styles.step}>
+                  6. Tap Paste Copied Text,
+                  then tap Add to Follow-Ups
+                  or Add & Assign.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.steps}>
+                <Text style={styles.step}>
+                  1. Open your Android
+                  messaging app.
+                </Text>
+                <Text style={styles.step}>
+                  2. Press and hold the text
+                  message you want to track.
+                </Text>
+                <Text style={styles.step}>
+                  3. Tap Copy. If your
+                  messaging app offers Share,
+                  you may still use Copy for
+                  this MailPilotUs feature.
+                </Text>
+                <Text style={styles.step}>
+                  4. Open MailPilotUs and tap
+                  + Add Text.
+                </Text>
+                <Text style={styles.step}>
+                  5. Tap Paste Copied Text.
+                </Text>
+                <Text style={styles.step}>
+                  6. Tap Add to Follow-Ups or
+                  Add & Assign.
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.ice,
+  },
+
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    padding: 20,
+    paddingTop: 60,
+  },
+
+  title: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: colors.navy,
+  },
+
+  subtitle: {
+    fontSize: 14,
+    color: colors.navyMuted,
+    marginTop: 2,
+  },
+
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+
+  reminderButton: {
+    backgroundColor: colors.navy,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 100,
+  },
+
+  addTextButton: {
+    backgroundColor: colors.blue,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 100,
+  },
+
+  addTextButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+
+  assignedButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: colors.line,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 100,
+  },
+
+  assignedButtonText: {
+    color: colors.blue,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: 16,
+    marginBottom: 12,
+  },
+
+  sourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+
+  reminderBadge: {
+    backgroundColor:
+      'rgba(124,58,237,0.12)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 100,
+  },
+
+  reminderBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#7C3AED',
+    letterSpacing: 0.4,
+  },
+
+  textBadge: {
+    backgroundColor:
+      'rgba(22,112,232,0.1)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 100,
+  },
+
+  textBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: colors.blue,
+    letterSpacing: 0.4,
+  },
+
+  from: {
+    fontSize: 12,
+    color: colors.navyMuted,
+    marginBottom: 4,
+    fontVariant: ['tabular-nums'],
+  },
+
+  subject: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.navy,
+    lineHeight: 21,
+  },
+
+  snippet: {
+    fontSize: 13,
+    color: colors.navyMuted,
+    marginTop: 4,
+  },
+
+  rowBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+    flexWrap: 'wrap',
+  },
+
+  time: {
+    fontSize: 11.5,
+    color: colors.navyFaint,
+  },
+
+  pillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+
+  duePill: {
+    backgroundColor:
+      'rgba(11,37,69,0.06)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 100,
+  },
+
+  duePillText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.navy,
+  },
+
+  dueOverduePill: {
+    backgroundColor:
+      'rgba(220,38,38,0.12)',
+  },
+
+  dueOverduePillText: {
+    color: '#DC2626',
+  },
+
+  replyPill: {
+    backgroundColor:
+      'rgba(11,37,69,0.06)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 100,
+  },
+
+  replyPillText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.navy,
+  },
+
+  waitingBadge: {
+    backgroundColor: 'rgba(245,158,11,0.14)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 100,
+  },
+
+  waitingBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#B45309',
+    letterSpacing: 0.4,
+  },
+
+  replyReceivedBadge: {
+    backgroundColor: 'rgba(22,163,74,0.12)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 100,
+  },
+
+  replyReceivedBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#16A34A',
+    letterSpacing: 0.4,
+  },
+
+  noReplyBadge: {
+    backgroundColor: 'rgba(220,38,38,0.12)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 100,
+  },
+
+  noReplyBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#DC2626',
+    letterSpacing: 0.4,
+  },
+
+  waitingPill: {
+    backgroundColor: 'rgba(245,158,11,0.14)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 100,
+  },
+
+  waitingPillText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#B45309',
+  },
+
+  noReplyPill: {
+    backgroundColor: 'rgba(220,38,38,0.12)',
+  },
+
+  noReplyPillText: {
+    color: '#DC2626',
+  },
+
+  assignPill: {
+    backgroundColor:
+      'rgba(22,112,232,0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 100,
+  },
+
+  assignPillText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.blue,
+  },
+
+  completePill: {
+    backgroundColor:
+      'rgba(22,163,74,0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 100,
+  },
+
+  completePillText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#16A34A',
+  },
+
+  imageModalBackdrop: {
+    flex: 1,
+    backgroundColor:
+      'rgba(11,37,69,0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+
+  imageModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    width: '100%',
+    maxWidth: 900,
+    height: '90%',
+    overflow: 'hidden',
+  },
+
+  imageModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+  },
+
+  imageModalTitle: {
+    flex: 1,
+    marginRight: 12,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.navy,
+  },
+
+  imageScroll: {
+    flex: 1,
+  },
+
+  imageScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 12,
+  },
+
+  originalImage: {
+    width: '100%',
+    height: 700,
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor:
+      'rgba(11,37,69,0.42)',
+    justifyContent: 'flex-end',
+  },
+
+  modalCard: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: '88%',
+  },
+
+  tutorialCard: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    margin: 20,
+    padding: 20,
+    alignSelf: 'center',
+    width: '90%',
+    maxWidth: 520,
+  },
+
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.navy,
+  },
+
+  modalSubtitle: {
+    fontSize: 13,
+    color: colors.navyMuted,
+    marginTop: 3,
+  },
+
+  closeText: {
+    color: colors.blue,
+    fontWeight: '700',
+    paddingVertical: 5,
+  },
+
+  helpButton: {
+    marginTop: 18,
+    backgroundColor: colors.ice,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 12,
+    padding: 12,
+  },
+
+  helpButtonText: {
+    color: colors.blue,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.navyMuted,
+    marginTop: 18,
+    marginBottom: 7,
+    letterSpacing: 0.7,
+  },
+
+  reminderInput: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    color: colors.navy,
+    fontSize: 15,
+    backgroundColor: '#fff',
+  },
+
+  webDateRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+
+  webDateInput: {
+    flex: 1,
+  },
+
+  webTimeInput: {
+    width: 110,
+  },
+
+  nativePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+
+  deleteButton: {
+    backgroundColor:
+      'rgba(220,38,38,0.1)',
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+  },
+
+  deleteButtonText: {
+    color: '#DC2626',
+    fontWeight: '800',
+  },
+
+  textInput: {
+    minHeight: 150,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 14,
+    padding: 14,
+    color: colors.navy,
+    fontSize: 15,
+    textAlignVertical: 'top',
+    backgroundColor: '#fff',
+  },
+
+  pasteButton: {
+    alignSelf: 'flex-start',
+    marginTop: 9,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+  },
+
+  pasteButtonText: {
+    color: colors.blue,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+
+  replyChoiceRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 20,
+    flexWrap: 'wrap',
+  },
+
+  replyChoiceButton: {
+    backgroundColor: colors.navy,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+
+  replyChoiceButtonText: {
+    color: '#fff',
+    fontWeight: '800',
+  },
+
+  customReplySaveButton: {
+    alignSelf: 'flex-start',
+    marginTop: 16,
+  },
+
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+    flexWrap: 'wrap',
+  },
+
+  saveButton: {
+    backgroundColor: colors.blue,
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+  },
+
+  saveButtonText: {
+    color: '#fff',
+    fontWeight: '800',
+  },
+
+  assignTextButton: {
+    backgroundColor: colors.navy,
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+  },
+
+  assignTextButtonText: {
+    color: '#fff',
+    fontWeight: '800',
+  },
+
+  disabledButton: {
+    opacity: 0.55,
+  },
+
+  platformTabs: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 20,
+    marginBottom: 18,
+  },
+
+  platformTab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: 'center',
+  },
+
+  platformTabActive: {
+    backgroundColor: colors.blue,
+    borderColor: colors.blue,
+  },
+
+  platformTabText: {
+    color: colors.navy,
+    fontWeight: '700',
+  },
+
+  platformTabTextActive: {
+    color: '#fff',
+  },
+
+  steps: {
+    gap: 12,
+  },
+
+  step: {
+    fontSize: 15,
+    lineHeight: 21,
+    color: colors.navy,
+  },
+
+  empty: {
+    paddingTop: 80,
+    alignItems: 'center',
+    paddingHorizontal: 30,
+  },
+
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.navy,
+  },
+
+  emptyBody: {
+    fontSize: 14,
+    color: colors.navyMuted,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 20,
+  },
+    onboarding: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 20,
+    padding: 22,
+    marginTop: 18,
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
+  },
+
+  onboardingTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.navy,
+    textAlign: 'center',
+  },
+
+  onboardingSubtitle: {
+    fontSize: 15,
+    color: colors.navyMuted,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 22,
+  },
+
+  onboardingStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+
+  stepNumber: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.blue,
+    color: '#fff',
+    textAlign: 'center',
+    lineHeight: 30,
+    fontSize: 14,
+    fontWeight: '800',
+    marginRight: 12,
+  },
+
+  stepContent: {
+    flex: 1,
+  },
+
+  stepTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.navy,
+  },
+
+  stepBody: {
+    fontSize: 13.5,
+    color: colors.navyMuted,
+    lineHeight: 19,
+    marginTop: 4,
+  },
+
+  forwardingCard: {
+    backgroundColor: colors.ice,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 10,
+  },
+
+  forwardingAddress: {
+    color: colors.blue,
+    fontSize: 15,
+    fontWeight: '800',
+    width: '100%',
+    textAlign: 'center',
+  },
+
+  forwardingCopy: {
+    color: colors.navyFaint,
+    fontSize: 11.5,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+
+  otherWaysTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.navyMuted,
+    textAlign: 'center',
+    marginTop: 2,
+    marginBottom: 10,
+  },
+
+  onboardingButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+
+  onboardingTextButton: {
+    backgroundColor: colors.blue,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 100,
+  },
+
+  onboardingReminderButton: {
+    backgroundColor: colors.navy,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 100,
+  },
+
+  onboardingButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+});
+const copyForwardingAddress = async () => {
+  if (!user?.forwardingAddress) return;
+
+  await Clipboard.setStringAsync(user.forwardingAddress);
+
+  Alert.alert(
+    'Copied',
+    'Your MailPilotUS forwarding address is on your clipboard.'
+  );
+};  
+  const [tasks, setTasks] = useState<EmailTask[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [completing, setCompleting] = useState<string | null>(null);
+  const [addTextOpen, setAddTextOpen] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+  const [tutorialPlatform, setTutorialPlatform] =
+    useState<'iphone' | 'android'>('iphone');
+  const [textMessage, setTextMessage] = useState('');
+  const [savingText, setSavingText] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const [reminderTitle, setReminderTitle] = useState('');
+  const [reminderEntity, setReminderEntity] = useState('');
+  const [reminderDate, setReminderDate] = useState<Date>(
+    () => new Date(Date.now() + 60 * 60 * 1000)
+  );
+  const [webReminderDate, setWebReminderDate] = useState(() =>
+    format(new Date(Date.now() + 60 * 60 * 1000), 'yyyy-MM-dd')
+  );
+  const [webReminderTime, setWebReminderTime] = useState(() =>
+    format(new Date(Date.now() + 60 * 60 * 1000), 'HH:mm')
+  );
+  const [editingReminderId, setEditingReminderId] =
+    useState<string | null>(null);
+  const [savingReminder, setSavingReminder] = useState(false);
+  const [originalImageOpen, setOriginalImageOpen] = useState(false);
+  const [originalImageUri, setOriginalImageUri] =
+    useState<string | null>(null);
+  const [originalImageTitle, setOriginalImageTitle] =
+    useState('Original Screenshot');
+  const [loadingOriginal, setLoadingOriginal] =
+    useState<string | null>(null);
+
   const appState = useRef<AppStateStatus>(AppState.currentState);
 
   const load = useCallback(async () => {
