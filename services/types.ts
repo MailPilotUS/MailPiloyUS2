@@ -33,6 +33,20 @@ export interface EmailTask {
 
   entity?: string | null;
 
+  /*
+   * Waiting for Reply
+   */
+  waitingForReply?: boolean;
+
+  // Deadline selected by the user
+  replyDeadline?: string | null;
+
+  // Set when MailPilotUS detects or records a reply
+  replyReceivedAt?: string | null;
+
+  // True when the deadline has passed without a reply
+  noReply?: boolean;
+
   // Original screenshot/image attached to a forwarded message
   hasOriginalImage?: boolean;
   originalImageType?: string | null;
