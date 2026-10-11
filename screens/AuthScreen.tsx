@@ -11,6 +11,7 @@ import {
   Image,
   Platform,
 } from 'react-native';
+
 import { useSession } from '../contexts/SessionContext';
 import { api } from '../services/api';
 import { colors } from '../theme';
@@ -36,6 +37,11 @@ export default function AuthScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Show / Hide Password controls
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] =
+    useState(false);
+
   const PRICE_IDS: Record<string, string> = {
     'pro-monthly': 'price_1Tx4i6FZ1VLALyugBjZvOONs',
     'pro-annual': 'price_1Tx5MYFZ1VLALyugWErltx9a',
@@ -45,6 +51,14 @@ export default function AuthScreen() {
     Platform.OS === 'web'
       ? new URLSearchParams(window.location.search).get('token') || ''
       : '';
+
+  const showMessage = (title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      window.alert(`${title}\n\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
 
   const submit = async () => {
     setLoading(true);
@@ -70,7 +84,10 @@ export default function AuthScreen() {
         }
       }
     } catch (e: any) {
-      Alert.alert('Something went wrong', e.message);
+      showMessage(
+        'Something went wrong',
+        e?.message || 'Please try again.'
+      );
     } finally {
       setLoading(false);
     }
@@ -82,22 +99,41 @@ export default function AuthScreen() {
     try {
       await api.forgotPassword(email);
 
-      Alert.alert(
+      showMessage(
         'Check your email',
         'If an account exists with that email, a reset link has been sent.'
       );
 
       setMode('login');
     } catch (e: any) {
-      Alert.alert('Something went wrong', e.message);
+      showMessage(
+        'Something went wrong',
+        e?.message || 'Please try again.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
   const submitResetPassword = async () => {
+    if (!resetToken) {
+      showMessage(
+        'Invalid reset link',
+        'Please request a new password-reset link.'
+      );
+      return;
+    }
+
+    if (!password) {
+      showMessage(
+        'Password required',
+        'Please enter your new password.'
+      );
+      return;
+    }
+
     if (password !== confirmPassword) {
-      Alert.alert(
+      showMessage(
         'Passwords do not match',
         'Please make sure both passwords match.'
       );
@@ -109,7 +145,7 @@ export default function AuthScreen() {
     try {
       await api.resetPassword(resetToken, password);
 
-      Alert.alert(
+      showMessage(
         'Password updated',
         'You can now log in with your new password.'
       );
@@ -121,11 +157,55 @@ export default function AuthScreen() {
         setMode('login');
       }
     } catch (e: any) {
-      Alert.alert('Something went wrong', e.message);
+      showMessage(
+        'Something went wrong',
+        e?.message || 'Please try again.'
+      );
     } finally {
       setLoading(false);
     }
   };
+
+  // Reusable password field with Show / Hide button
+  const PasswordField = ({
+    value,
+    onChangeText,
+    placeholder,
+    visible,
+    onToggle,
+  }: {
+    value: string;
+    onChangeText: (text: string) => void;
+    placeholder: string;
+    visible: boolean;
+    onToggle: () => void;
+  }) => (
+    <View style={styles.passwordContainer}>
+      <TextInput
+        style={styles.passwordInput}
+        placeholder={placeholder}
+        placeholderTextColor={colors.navyFaint}
+        secureTextEntry={!visible}
+        autoCapitalize="none"
+        autoCorrect={false}
+        value={value}
+        onChangeText={onChangeText}
+      />
+
+      <TouchableOpacity
+        style={styles.eyeButton}
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityLabel={
+          visible ? 'Hide password' : 'Show password'
+        }
+      >
+        <Text style={styles.eyeText}>
+          {visible ? '🙈' : '👁️'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   if (mode === 'forgot') {
     return (
@@ -197,28 +277,32 @@ export default function AuthScreen() {
             Create a new password
           </Text>
 
-          <Text style={styles.label}>New password</Text>
+          <Text style={styles.label}>
+            New password
+          </Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Enter a new password"
-            placeholderTextColor={colors.navyFaint}
-            secureTextEntry
+          <PasswordField
             value={password}
             onChangeText={setPassword}
+            placeholder="Enter a new password"
+            visible={showPassword}
+            onToggle={() =>
+              setShowPassword(!showPassword)
+            }
           />
 
           <Text style={styles.label}>
             Confirm new password
           </Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Re-enter your new password"
-            placeholderTextColor={colors.navyFaint}
-            secureTextEntry
+          <PasswordField
             value={confirmPassword}
             onChangeText={setConfirmPassword}
+            placeholder="Re-enter your new password"
+            visible={showConfirmPassword}
+            onToggle={() =>
+              setShowConfirmPassword(!showConfirmPassword)
+            }
           />
 
           <TouchableOpacity
@@ -317,7 +401,9 @@ export default function AuthScreen() {
           </Text>
         )}
 
-        <Text style={styles.label}>Email address</Text>
+        <Text style={styles.label}>
+          Email address
+        </Text>
 
         <TextInput
           style={styles.input}
@@ -329,19 +415,22 @@ export default function AuthScreen() {
           onChangeText={setEmail}
         />
 
-        <Text style={styles.label}>Password</Text>
+        <Text style={styles.label}>
+          Password
+        </Text>
 
-        <TextInput
-          style={styles.input}
+        <PasswordField
+          value={password}
+          onChangeText={setPassword}
           placeholder={
             mode === 'signup'
               ? 'Create a password'
               : 'Enter your password'
           }
-          placeholderTextColor={colors.navyFaint}
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
+          visible={showPassword}
+          onToggle={() =>
+            setShowPassword(!showPassword)
+          }
         />
 
         <TouchableOpacity
@@ -506,8 +595,8 @@ const styles = StyleSheet.create({
   formSubheadline: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 13,
-    textAlign: 'center',
     marginBottom: 16,
+    textAlign: 'center',
   },
 
   label: {
@@ -526,6 +615,36 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginBottom: 14,
     fontSize: 15,
+  },
+
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 12,
+    marginBottom: 14,
+    minHeight: 50,
+  },
+
+  passwordInput: {
+    flex: 1,
+    padding: 14,
+    color: '#fff',
+    fontSize: 15,
+  },
+
+  eyeButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  eyeText: {
+    fontSize: 20,
+    color: '#fff',
   },
 
   cta: {
