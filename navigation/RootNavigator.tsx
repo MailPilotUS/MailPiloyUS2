@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Platform, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -25,9 +25,23 @@ function MainTabs() {
         tabBarInactiveTintColor: colors.navyFaint,
       }}
     >
-      <Tabs.Screen name="FollowUp" component={FollowUpListScreen} options={{ title: 'Follow-Up' }} />
-      <Tabs.Screen name="Assigned" component={AssignedListScreen} options={{ title: 'Assigned' }} />
-      <Tabs.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+      <Tabs.Screen
+        name="FollowUp"
+        component={FollowUpListScreen}
+        options={{ title: 'Follow-Up' }}
+      />
+
+      <Tabs.Screen
+        name="Assigned"
+        component={AssignedListScreen}
+        options={{ title: 'Assigned' }}
+      />
+
+      <Tabs.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{ title: 'Settings' }}
+      />
     </Tabs.Navigator>
   );
 }
@@ -35,9 +49,23 @@ function MainTabs() {
 export default function RootNavigator() {
   const { user, loading, subscriptionStatus } = useSession();
 
-  if (loading) {
+  // Password-reset links must display the authentication screen,
+  // even when the user already has an active session.
+  const isPasswordReset =
+    Platform.OS === 'web' &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('token');
+
+  if (loading && !isPasswordReset) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.navy }}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.navy,
+        }}
+      >
         <ActivityIndicator color="#fff" />
       </View>
     );
@@ -46,20 +74,42 @@ export default function RootNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {!user ? (
-          <Stack.Screen name="Auth" component={AuthScreen} />
-        ) : subscriptionStatus === 'none' || subscriptionStatus === 'expired' || subscriptionStatus === 'billing_issue' ? (
-          <Stack.Screen name="Paywall" component={PaywallScreen} />
+
+        {isPasswordReset ? (
+          <Stack.Screen
+            name="PasswordReset"
+            component={AuthScreen}
+          />
+        ) : !user ? (
+          <Stack.Screen
+            name="Auth"
+            component={AuthScreen}
+          />
+        ) : subscriptionStatus === 'none' ||
+          subscriptionStatus === 'expired' ||
+          subscriptionStatus === 'billing_issue' ? (
+          <Stack.Screen
+            name="Paywall"
+            component={PaywallScreen}
+          />
         ) : (
           <>
-            <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen
+              name="Main"
+              component={MainTabs}
+            />
+
             <Stack.Screen
               name="AssignTask"
               component={AssignTaskScreen}
-              options={{ presentation: 'modal', headerShown: false }}
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+              }}
             />
           </>
         )}
+
       </Stack.Navigator>
     </NavigationContainer>
   );
