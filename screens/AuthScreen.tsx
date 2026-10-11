@@ -16,6 +16,55 @@ import { useSession } from '../contexts/SessionContext';
 import { api } from '../services/api';
 import { colors } from '../theme';
 
+// IMPORTANT:
+// This component must remain OUTSIDE AuthScreen.
+// Otherwise, React can recreate the input after each keystroke,
+// causing the password field to lose focus.
+
+type PasswordFieldProps = {
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder: string;
+  visible: boolean;
+  onToggle: () => void;
+};
+
+function PasswordField({
+  value,
+  onChangeText,
+  placeholder,
+  visible,
+  onToggle,
+}: PasswordFieldProps) {
+  return (
+    <View style={styles.passwordContainer}>
+      <TextInput
+        style={styles.passwordInput}
+        placeholder={placeholder}
+        placeholderTextColor={colors.navyFaint}
+        secureTextEntry={!visible}
+        autoCapitalize="none"
+        autoCorrect={false}
+        value={value}
+        onChangeText={onChangeText}
+      />
+
+      <TouchableOpacity
+        style={styles.eyeButton}
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityLabel={
+          visible ? 'Hide password' : 'Show password'
+        }
+      >
+        <Text style={styles.eyeText}>
+          {visible ? '🙈' : '👁️'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export default function AuthScreen() {
   const { login, signup } = useSession();
 
@@ -166,46 +215,7 @@ export default function AuthScreen() {
     }
   };
 
-  // Reusable password field with Show / Hide button
-  const PasswordField = ({
-    value,
-    onChangeText,
-    placeholder,
-    visible,
-    onToggle,
-  }: {
-    value: string;
-    onChangeText: (text: string) => void;
-    placeholder: string;
-    visible: boolean;
-    onToggle: () => void;
-  }) => (
-    <View style={styles.passwordContainer}>
-      <TextInput
-        style={styles.passwordInput}
-        placeholder={placeholder}
-        placeholderTextColor={colors.navyFaint}
-        secureTextEntry={!visible}
-        autoCapitalize="none"
-        autoCorrect={false}
-        value={value}
-        onChangeText={onChangeText}
-      />
-
-      <TouchableOpacity
-        style={styles.eyeButton}
-        onPress={onToggle}
-        accessibilityRole="button"
-        accessibilityLabel={
-          visible ? 'Hide password' : 'Show password'
-        }
-      >
-        <Text style={styles.eyeText}>
-          {visible ? '🙈' : '👁️'}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
+  // FORGOT PASSWORD SCREEN
 
   if (mode === 'forgot') {
     return (
@@ -262,6 +272,8 @@ export default function AuthScreen() {
       </View>
     );
   }
+
+  // RESET PASSWORD SCREEN
 
   if (mode === 'reset') {
     return (
@@ -322,6 +334,8 @@ export default function AuthScreen() {
       </View>
     );
   }
+
+  // LOGIN / SIGNUP SCREEN
 
   return (
     <ScrollView
@@ -485,6 +499,8 @@ export default function AuthScreen() {
     </ScrollView>
   );
 }
+
+// STYLES
 
 const styles = StyleSheet.create({
   container: {
