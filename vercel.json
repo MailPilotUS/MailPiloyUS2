@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npx expo export --platform web --output-dir dist",
+  "buildCommand": "npx expo export --platform web --output-dir dist && cp public/apple-touch-icon.png dist/apple-touch-icon.png",
   "outputDirectory": "dist",
   "rewrites": [
     {
